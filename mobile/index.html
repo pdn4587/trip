@@ -47,10 +47,10 @@
     .mini{padding:6px 8px;border-radius:8px;font-size:12px}
 
     /* 갤러리 */
-    .gallery{margin:12px;background:var(--panel);border:1px solid var(--muted);border-radius:14px;padding:12px}
+    .gallery{margin:12px;background:#0c1118;border:1px solid #3a4558;border-radius:14px;padding:12px}
     .gallery .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
     @media (max-width:520px){ .gallery .grid{grid-template-columns:1fr;} }
-    .gcard{position:relative;background:#0e151e;border:1px solid #394456;border-radius:12px;overflow:hidden}
+    .gcard{position:relative;background:#12131a;border:1px solid #3f4a5f;border-radius:12px;overflow:hidden}
     .gcard img{display:block;width:100%;height:120px;object-fit:cover}
     .gcard .cap{padding:8px;font-size:13px;color:#cbd6e3}
     .gtools{display:flex;gap:6px;padding:8px;flex-wrap:wrap}
@@ -96,16 +96,8 @@
       <div class="bar">
         <strong>내 일정</strong>
         <div class="footer">
-          <button class="btn" id="saveBtn">즉시 저장</button>
-          <button class="btn" id="loadBtn">저장 불러오기</button>
-          <button class="btn" id="clearBtn">모두 초기화</button>
-          <button class="btn" id="exportBtn">일정 JSON 내보내기</button>
-          <label class="btn" for="importFile" style="cursor:pointer">JSON 불러오기</label>
-          <input id="importFile" type="file" accept="application/json" style="display:none" />
-          <!-- Realtime sync controls -->
           <input id="roomId" placeholder="공유 코드(예: sapporo-trip)" style="padding:6px 8px;border-radius:8px;border:1px solid #334055;background:#0e151e;color:#e6edf3;min-width:160px" />
           <button class="btn" id="syncToggle">실시간 동기화: 꺼짐</button>
-          <button class="btn" id="shareBtn" title="현재 페이지의 공유 링크 복사">공유 링크 복사</button>
         </div>
       </div>
       <div id="schedule" class="slots" aria-label="일정 영역"></div>
@@ -121,6 +113,11 @@
       <div id="galleryGrid" class="grid"></div>
     </section>
   </main>
+
+  <div class="wrap" style="padding:12px 16px 24px;display:flex;justify-content:center">
+    <a href="https://pdn4587.github.io/trip/" class="btn ghost" style="text-align:center">PC 버전으로 보기</a>
+  </div>
+
 
   <script>
     // ====== 기본 데이터 ======
@@ -250,12 +247,9 @@
           c.schedule.push(inst); saveState(); renderSchedule(); renderPlanSelect();
         };
         card.querySelector('.btn.add').addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); addHandler(); });
-        const img = card.querySelector('img');
-        img.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); addHandler(); });
-        img.addEventListener('touchstart', (e)=>{ if(e.cancelable) e.preventDefault(); }, {passive:false});
-        img.addEventListener('touchend', (e)=>{ if(e.cancelable) e.preventDefault(); addHandler(); }, {passive:false});
-
-        // 편집/삭제
+        const let img = card.querySelector('img');
+        img.setAttribute('draggable','false');
+// 편집/삭제
         card.querySelector('[title="편집"]').addEventListener('click', ()=> editPlace(item.id));
         card.querySelector('[title="삭제"]').addEventListener('click', ()=> removePlace(item.id));
 
@@ -350,8 +344,12 @@
     // ====== 저장/불러오기/내보내기 ======
     let saveTimer=null; const throttleSave = ()=>{ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,800); };
     function bindButtons(){
-      byId('saveBtn').addEventListener('click', saveState);
-      byId('loadBtn').addEventListener('click', ()=>{ loadApp(); applyState(); });
+      const addPlaceBtn = byId('addPlaceBtn'); if(addPlaceBtn) addPlaceBtn.addEventListener('click', addPlace);
+      byId('newPlanBtn').addEventListener('click', createPlan);
+      byId('renamePlanBtn').addEventListener('click', renamePlan);
+      byId('deletePlanBtn').addEventListener('click', deletePlan);
+}
+);
       byId('clearBtn').addEventListener('click', ()=>{ if(confirm('현재 일정의 모든 내용을 초기화할까요?')){ const c=cur(); c.intro=''; c.headerTitle=''; c.headerBadge=''; c.schedule=[]; c.gallery=[]; saveState(); applyState(); }});
       byId('exportBtn').addEventListener('click', ()=>{ const c=cur(); const blob = new Blob([JSON.stringify(c,null,2)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=(c.name||'itinerary')+'.json'; a.click(); URL.revokeObjectURL(url); });
       byId('importFile').addEventListener('change', (e)=>{ const file = e.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = ()=>{ try{ const data = JSON.parse(reader.result); const c=cur(); Object.assign(c, { headerTitle:data.headerTitle||c.headerTitle, headerBadge:data.headerBadge||c.headerBadge, intro:data.intro||'', schedule:data.schedule||[], gallery:data.gallery||[] }); applyState(); saveState(); }catch(err){ alert('JSON 형식이 올바르지 않습니다.'); } }; reader.readAsText(file); });
@@ -392,8 +390,7 @@
     function pushStateDebounced(){ if(!fb.sync || !fb.room) return; clearTimeout(writeTimer); writeTimer = setTimeout(async()=>{ try{ const payload = { state: cur(), rev: Date.now(), from: fb.selfId }; await roomDoc(fb.room).set(payload, { merge: true }); }catch(e){ console.error(e); } }, 350); }
     async function startSync(roomId){ await initFirebase(); if(!fb.db){ alert('Firebase 설정이 필요합니다.'); return; } const c=cur(); c.roomId = roomId; fb.room = roomId; fb.sync = true; await roomDoc(roomId).set({ state: c, rev: Date.now(), from: fb.selfId }, { merge: true }); if(fb.unsub) fb.unsub(); fb.unsub = roomDoc(roomId).onSnapshot((snap)=>{ const data = snap.data(); if(!data) return; if(data.from === fb.selfId) return; if(data.rev && data.rev <= lastRemoteRev) return; lastRemoteRev = data.rev || Date.now(); const incoming = data.state; const target = cur(); if(target && target.id===incoming.id){ Object.assign(target, incoming); applyState(); saveState(); } }); const url = new URL(location.href); url.searchParams.set('room', roomId); history.replaceState({}, '', url); document.getElementById('syncToggle').textContent = '실시간 동기화: 켜짐'; saveApp(); }
     function stopSync(){ if(fb.unsub) fb.unsub(); fb.unsub=null; fb.sync=false; fb.room=null; const url = new URL(location.href); url.searchParams.delete('room'); history.replaceState({}, '', url); document.getElementById('syncToggle').textContent = '실시간 동기화: 꺼짐'; }
-    ;(function bindRealtimeUI(){ const roomInput = document.getElementById('roomId'); const syncBtn = document.getElementById('syncToggle'); const shareBtn = document.getElementById('shareBtn');
-      syncBtn.addEventListener('click', async()=>{ const rid = roomInput.value.trim(); if(!fb.sync){ if(!rid){ alert('공유 코드를 먼저 입력하세요. 예: sapporo-trip'); return; } await startSync(rid); } else { stopSync(); } });
+    ;(function bindRealtimeUI(){ const roomInput = document.getElementById('roomId'); const syncBtn = document.getElementById('syncToggle'); if(!fb.sync){ if(!rid){ alert('공유 코드를 먼저 입력하세요. 예: sapporo-trip'); return; } await startSync(rid); } else { stopSync(); } });
       shareBtn.addEventListener('click', ()=>{ const rid = roomInput.value.trim(); const url = new URL(location.href); if(rid) url.searchParams.set('room', rid); navigator.clipboard.writeText(url.toString()).then(()=>{ shareBtn.textContent='복사됨!'; setTimeout(()=>shareBtn.textContent='공유 링크 복사',1200); }); });
       const urlRoom = new URL(location.href).searchParams.get('room'); if(urlRoom){ roomInput.value = urlRoom; startSync(urlRoom); }
     })();
