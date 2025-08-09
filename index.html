@@ -2,11 +2,12 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>여러 일정 관리 · 통합(PC/모바일) · Ably 자동 동기화 + 터치 DnD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>여러 일정 관리 · 통합(PC/모바일) · Ably 자동 동기화 + 터치 DnD + 모바일 탭바</title>
   <style>
     :root{ --bg:#0b0f14; --panel:#121821; --muted:#2a3443; --text:#e6edf3; --accent:#53b3ff; --accent2:#82e0aa; --danger:#ff6b6b;
-      --gallery-bg:#0c1118; --gallery-bd:#3a4558; --gallery-card:#12131a; --gallery-card-bd:#3f4a5f; }
+      --gallery-bg:#0c1118; --gallery-bd:#3a4558; --gallery-card:#12131a; --gallery-card-bd:#3f4a5f;
+      --tabbar-bg:#0f1620; --tabbar-bd:#2b3546; }
     *{box-sizing:border-box; touch-action: manipulation;}
     body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Noto Sans KR,sans-serif;-webkit-tap-highlight-color:transparent}
     a{color:var(--accent);text-decoration:none}
@@ -66,16 +67,30 @@
     ::-webkit-scrollbar{height:10px;width:10px}
     ::-webkit-scrollbar-thumb{background:#2b374a;border-radius:999px}
     body.dragging{ user-select:none; cursor:grabbing; }
+
+    /* 모바일 레이아웃 */
     @media (max-width: 900px){
       .app{display:block}
       .sidebar{display:none}
       .wrap{padding:14px}
       .board .slots .card{width:100%}
       .add-slot{width:100%}
-      .mobile-tools{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
-      .select{flex:1; min-width:160px; border:1px solid #334055; background:#0f1620; color:#d7e2ee; padding:8px; border-radius:10px}
     }
-    .mobile-tools{display:none}
+
+    /* 모바일 하단 탭바 */
+    .mobile-tabbar{
+      position: sticky; bottom: 0; z-index: 50;
+      background: var(--tabbar-bg); border-top:1px solid var(--tabbar-bd);
+      padding: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+      display: none; gap:8px; align-items:center; justify-content:stretch; flex-wrap:wrap;
+    }
+    .mobile-tabbar .row{display:flex; gap:8px; width:100%; align-items:center}
+    .mobile-tabbar .select{flex:1; min-width:160px; border:1px solid #334055; background:#0f1620; color:#d7e2ee; padding:8px; border-radius:10px}
+    .iconbtn{min-width:40px; border-radius:10px; padding:8px 10px}
+    @media (max-width: 900px){
+      .mobile-tabbar{display:flex}
+    }
+
     .drag-ghost{position:fixed; pointer-events:none; z-index:9999; opacity:.9; transform:translate(-50%,-50%); border-radius:8px; overflow:hidden; box-shadow:0 6px 24px rgba(0,0,0,.35)}
     .drag-ghost img{display:block; width:140px; height:90px; object-fit:cover}
   </style>
@@ -101,12 +116,6 @@
           <div class="title">
             <h1 id="hTitle">좌클릭하여 제목을 수정하세요.</h1>
             <span id="hBadge" class="badge">좌클릭하여 설명을 수정하세요.</span>
-          </div>
-          <div class="mobile-tools">
-            <select id="planSelect" class="select" title="일정 선택"></select>
-            <button class="btn" id="mNew">새 일정</button>
-            <button class="btn" id="mRename">이름 바꾸기</button>
-            <button class="btn danger" id="mDelete">삭제</button>
           </div>
         </div>
       </header>
@@ -135,6 +144,21 @@
           <div id="galleryGrid" class="grid"></div>
         </section>
       </main>
+    </div>
+  </div>
+
+  <!-- 모바일 하단 탭바 -->
+  <div class="mobile-tabbar" id="mobileTabbar" aria-label="모바일 탭 조작">
+    <div class="row">
+      <button class="btn iconbtn" id="prevPlanBtn" title="이전 일정">◀</button>
+      <select id="planSelect" class="select" title="일정 선택"></select>
+      <button class="btn iconbtn" id="nextPlanBtn" title="다음 일정">▶</button>
+    </div>
+    <div class="row">
+      <button class="btn" id="mNew">새 일정</button>
+      <button class="btn" id="mDuplicate">복제</button>
+      <button class="btn" id="mRename">이름 바꾸기</button>
+      <button class="btn danger" id="mDelete">삭제</button>
     </div>
   </div>
 
@@ -181,6 +205,7 @@
           list.appendChild(el);
         }
       });
+      // 모바일 하단 select 갱신
       const sel = byId('planSelect');
       if(sel){
         sel.innerHTML = app.items.map(p=>`<option value="${p.id}" ${p.id===app.activeId?'selected':''}>${p.name} (${p.schedule.length})</option>`).join('');
@@ -198,13 +223,28 @@
     function createPlan(){ const name=prompt('새 일정 이름','새 일정'); if(!name) return; const p=newPlanTemplate(name.trim()); app.items.push(p); app.activeId=p.id; saveState(); applyState(); renderTabs(); }
     function renamePlan(id){ const p=app.items.find(x=>x.id===id) || cur(); if(!p) return; const name=prompt('일정 이름', p.name); if(name===null) return; p.name=name.trim()||p.name; saveState(); renderTabs(); }
     function deletePlan(id){ const idx=app.items.findIndex(x=>x.id===(id||app.activeId)); if(idx<0) return; if(app.items.length<=1){ alert('마지막 일정은 삭제할 수 없어요'); return; } app.items.splice(idx,1); app.activeId=app.items[0].id; saveState(); applyState(); renderTabs(); }
+    function duplicatePlan(id){
+      const p = app.items.find(x=>x.id===(id||app.activeId)); if(!p) return;
+      const copy = JSON.parse(JSON.stringify(p)); copy.id = 'plan-'+uid(); copy.name = p.name + ' 복사';
+      app.items.push(copy); app.activeId = copy.id; saveState(); applyState(); renderTabs();
+    }
 
-    // 모바일 상단 툴바 버튼
-    function bindMobileTools(){
-      const mNew = byId('mNew'), mRename = byId('mRename'), mDelete = byId('mDelete');
-      if(mNew) mNew.addEventListener('click', createPlan);
-      if(mRename) mRename.addEventListener('click', ()=> renamePlan(app.activeId));
-      if(mDelete) mDelete.addEventListener('click', ()=> deletePlan(app.activeId));
+    // 모바일 하단 탭바 버튼 바인딩
+    function bindMobileTabbar(){
+      byId('mNew').addEventListener('click', createPlan);
+      byId('mRename').addEventListener('click', ()=> renamePlan(app.activeId));
+      byId('mDelete').addEventListener('click', ()=> deletePlan(app.activeId));
+      byId('mDuplicate').addEventListener('click', ()=> duplicatePlan(app.activeId));
+      byId('prevPlanBtn').addEventListener('click', ()=>{
+        const idx = app.items.findIndex(p=>p.id===app.activeId);
+        const next = (idx-1+app.items.length)%app.items.length;
+        switchPlan(app.items[next].id);
+      });
+      byId('nextPlanBtn').addEventListener('click', ()=>{
+        const idx = app.items.findIndex(p=>p.id===app.activeId);
+        const next = (idx+1)%app.items.length;
+        switchPlan(app.items[next].id);
+      });
     }
 
     // ===== 제목/배지 클릭 편집 =====
@@ -229,12 +269,9 @@
             <button class="btn" title="편집" type="button">편집</button>
             <button class="btn danger" title="삭제" type="button">삭제</button>
           </div>`;
-        // 마우스 우클릭 편집
         card.addEventListener('contextmenu', (e)=>{ e.preventDefault(); editPlace(item.id); });
-        // 버튼
         card.querySelector('[title="편집"]').addEventListener('click', ()=> editPlace(item.id));
         card.querySelector('[title="삭제"]').addEventListener('click', ()=> removePlace(item.id));
-        // 터치 DnD 진입
         enableTouchSource(card, {type:'gallery', id:item.id, img:item.img, title:item.title});
         grid.appendChild(card);
       });
@@ -295,6 +332,8 @@
       add.addEventListener('dragover', (e)=>{ e.preventDefault(); e.stopPropagation(); add.classList.add('active'); });
       add.addEventListener('dragleave', ()=> add.classList.remove('active'));
       add.addEventListener('drop', (e)=>{ e.preventDefault(); e.stopPropagation(); add.classList.remove('active'); const payload=dragCtx||getDrag(e); if(!payload) return; const c=cur(); applyDrop(payload, c.schedule.length); });
+      // 터치 드롭 대응
+      enableTouchDrop(add, (insertAt)=> insertAt===-1 ? null : applyDrop(touchDragging.payload, insertAt));
       return add;
     }
     function makeSchedCard(s, index){
@@ -328,8 +367,8 @@
       if(s.link){ const dot=document.createElement('div'); dot.className='link-dot'; card.appendChild(dot); img.title=s.link; }
       card.appendChild(img); card.appendChild(body); body.appendChild(noteBtn); body.appendChild(noteWrap); card.appendChild(tools);
 
-      // 터치 DnD 진입
       enableTouchSource(card, {type:'schedule', from:index, img:s.img, title:s.title});
+      enableTouchDrop(card, (insertAt)=> insertAt===-1 ? null : applyDrop(touchDragging.payload, insertAt));
       return card;
     }
     function bindScheduleDnD(){ const cont=byId('schedule'); cont.addEventListener('dragover', (e)=> e.preventDefault()); cont.addEventListener('drop', (e)=>{ e.preventDefault(); e.stopPropagation(); if(e.target && e.target.classList && e.target.classList.contains('add-slot')) return; const payload=dragCtx||getDrag(e); if(!payload) return; const idx=placeholderIndex(); const c=cur(); applyDrop(payload, (idx!==-1? idx : c.schedule.length)); removePlaceholder(); }); }
@@ -344,12 +383,30 @@
       byId('newPlanBtn')?.addEventListener('click', createPlan);
       byId('renamePlanBtn')?.addEventListener('click', ()=> renamePlan(app.activeId));
       byId('deletePlanBtn')?.addEventListener('click', ()=> deletePlan(app.activeId));
-      bindMobileTools();
+      bindMobileTabbar();
     }
-    function updateFlowArrows(){ const cont=byId('schedule'); const cards=Array.from(cont.querySelectorAll('.card')); cards.forEach(c=> c.classList.remove('flow-right','flow-down','no-flow') ); requestAnimationFrame(()=>{ for(let i=0;i<cards.length;i++){ const c=cards[i]; const n=cards[i+1]; if(!n){ c.classList.add('no-flow'); break; } const r1=c.getBoundingClientRect(); const r2=n.getBoundingClientRect(); if(Math.abs(r1.top-r2.top)<10){ c.classList.add('flow-right'); } else { c.classList.add('flow-down'); } } }); }
-    function applyState(){ const c=cur(); byId('hTitle').textContent=c.headerTitle||'좌클릭하여 제목을 수정하세요.'; byId('hBadge').textContent=c.headerBadge||'좌클릭하여 설명을 수정하세요.'; byId('intro').innerText=c.intro||''; renderTabs(); renderGallery(); renderSchedule(); }
+    function updateFlowArrows(){
+      const cont=byId('schedule');
+      const cards=Array.from(cont.querySelectorAll('.card'));
+      cards.forEach(c=> c.classList.remove('flow-right','flow-down','no-flow') );
+      requestAnimationFrame(()=>{
+        for(let i=0;i<cards.length;i++){
+          const c=cards[i]; const n=cards[i+1];
+          if(!n){ c.classList.add('no-flow'); break; }
+          const r1=c.getBoundingClientRect(); const r2=n.getBoundingClientRect();
+          if(Math.abs(r1.top-r2.top)<10){ c.classList.add('flow-right'); } else { c.classList.add('flow-down'); }
+        }
+      });
+    }
+    function applyState(){
+      const c=cur();
+      byId('hTitle').textContent=c.headerTitle||'좌클릭하여 제목을 수정하세요.';
+      byId('hBadge').textContent=c.headerBadge||'좌클릭하여 설명을 수정하세요.';
+      byId('intro').innerText=c.intro||'';
+      renderTabs(); renderGallery(); renderSchedule();
+    }
 
-    // ===== 터치 DnD 구현 (iOS 사파리 우클릭 메뉴 차단 & 드래그 시뮬레이션) =====
+    // ===== 터치 DnD 구현 =====
     let touchDragging = null; // {payload, startX, startY, moved, ghost}
     function enableTouchSource(el, payload){
       el.addEventListener('touchstart', (e)=>{
@@ -369,9 +426,8 @@
           showGhost(payload, t.clientX, t.clientY);
         }
         if(touchDragging.moved){
-          e.preventDefault(); // iOS 이미지/텍스트 메뉴, 스크롤 방지
+          e.preventDefault();
           moveGhost(t.clientX, t.clientY);
-          // placeholder 위치 갱신
           const targetIndex = computeDropIndex(t.clientX, t.clientY);
           const cont = byId('schedule');
           if(targetIndex === -1){
@@ -387,15 +443,13 @@
       el.addEventListener('touchend', ()=>{
         if(!touchDragging){ return; }
         const wasMoved = touchDragging.moved;
-        hideGhost();
-        document.body.classList.remove('dragging');
+        hideGhost(); document.body.classList.remove('dragging');
         const payload = touchDragging.payload;
         touchDragging = null;
-
-        if(!wasMoved){ return; } // 탭만 한 경우
+        if(!wasMoved){ return; }
         const insertAt = placeholderIndex();
         removePlaceholder();
-        if(insertAt === -1) return; // 유효한 드롭 영역 아님
+        if(insertAt === -1) return;
         applyDrop(payload, insertAt);
       }, {passive:true});
 
@@ -403,9 +457,24 @@
         hideGhost(); removePlaceholder(); document.body.classList.remove('dragging'); touchDragging=null;
       }, {passive:true});
     }
+    function enableTouchDrop(el, onDrop){
+      // 터치 대상으로도 등록(스케줄 카드/추가영역)
+      el.addEventListener('touchmove', (e)=>{
+        if(!touchDragging) return;
+        e.preventDefault();
+      }, {passive:false});
+      el.addEventListener('touchend', ()=>{
+        if(!touchDragging) return;
+        const insertAt = placeholderIndex();
+        removePlaceholder(); hideGhost(); document.body.classList.remove('dragging');
+        const payload = touchDragging.payload; touchDragging = null;
+        if(insertAt === -1) return;
+        onDrop(insertAt);
+      }, {passive:true});
+    }
     function showGhost(payload, x, y){
       const g = document.createElement('div'); g.className='drag-ghost';
-      g.innerHTML = `<img src="${payload.img || ''}" alt="">`;
+      g.innerHTML = payload.img ? `<img src="${payload.img}" alt="">` : `<div style="padding:12px 16px;background:#141b26;border:1px solid #344055;border-radius:8px">이동</div>`;
       document.body.appendChild(g);
       touchDragging.ghost = g;
       moveGhost(x,y);
@@ -421,6 +490,8 @@
     }
     function computeDropIndex(x, y){
       const cont = byId('schedule');
+      const rect = cont.getBoundingClientRect();
+      if(y < rect.top || y > rect.bottom || x < rect.left || x > rect.right) return -1;
       const cards = Array.from(cont.querySelectorAll('.card'));
       if(cards.length===0) return 0;
       for(let i=0;i<cards.length;i++){
@@ -484,8 +555,8 @@
       bindHeaderEdit();
       bindIntro();
       bindButtons();
+      bindMobileTabbar();
       applyState();
-      // 자동 동기화 시작
       startSync("trip");
       window.addEventListener('resize', ()=> requestAnimationFrame(updateFlowArrows));
     }
