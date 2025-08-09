@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>여러 일정 관리 · 모바일</title>
+  <style>
+    :root{ --bg:#0b0f14; --panel:#121821; --muted:#2a3443; --text:#e6edf3; --accent:#53b3ff; --accent2:#82e0aa; --danger:#ff6b6b; }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Noto Sans KR,sans-serif}
+    a{color:var(--accent);text-decoration:none}
+    button{font:inherit}
+
+    header{position:sticky;top:0;background:linear-gradient(180deg,rgba(11,15,20,.98),rgba(11,15,20,.85));backdrop-filter:blur(6px);z-index:10}
+    .wrap{max-width:860px;margin:0 auto;padding:12px}
+    .title{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap}
+    .title h1{margin:0;font-size:20px}
+    .badge{font-size:12px;padding:4px 8px;border:1px solid #2a3443;border-radius:999px;color:#b9c4d0}
+
+    /* 상단 툴바(모바일 전용) */
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .select{flex:1;min-width:160px;border:1px solid #334055;background:#0f1620;color:#d7e2ee;padding:8px;border-radius:10px}
+    .btn{border:1px solid #344055;background:#141b26;color:#d7e2ee;border-radius:10px;padding:8px 10px;font-size:13px;cursor:pointer}
+    .btn:hover{border-color:#3f5068}
+    .btn.danger{border-color:#7a3940;background:#201114;color:#ffc9c9}
+    .btn.ghost{background:transparent;border-color:#334055}
+
+    /* 설명 박스 */
+    .explain{margin:12px;background:var(--panel);border:1px solid var(--muted);border-radius:14px;padding:12px}
+    .explain [contenteditable]{outline:none;border-radius:10px;padding:8px;background:#0e131b;border:1px dashed #394456}
+    .explain .hint{font-size:12px;color:#9db0c7;margin-top:6px}
+
+    /* 일정 보드 */
+    .board{margin:12px;background:var(--panel);border:1px solid var(--muted);border-radius:14px;padding:12px}
+    .board .bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap}
+    .slots{display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:10px}
+    @media (max-width:520px){ .slots{grid-template-columns:1fr;} }
+
+    .card{position:relative;background:#0e151e;border:1px solid #394456;border-radius:12px;overflow:hidden}
+    .card img{display:block;width:100%;height:120px;object-fit:cover}
+    .card .body{padding:8px}
+    .card .title{font-size:14px;font-weight:600}
+    .noteToggle{margin-top:6px;width:100%;background:#192130;border:1px solid #2b374a;color:#c9d6e2;padding:6px;border-radius:8px;cursor:pointer}
+    .note{margin-top:8px;display:none}
+    .note textarea{width:100%;min-height:70px;background:#0b1118;color:#d9e4ef;border:1px solid #334055;border-radius:8px;padding:8px;resize:vertical}
+    .toolbar-inline{display:flex;gap:6px;margin-top:8px}
+    .mini{padding:6px 8px;border-radius:8px;font-size:12px}
+
+    /* 갤러리 */
+    .gallery{margin:12px;background:var(--panel);border:1px solid var(--muted);border-radius:14px;padding:12px}
+    .gallery .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    @media (max-width:520px){ .gallery .grid{grid-template-columns:1fr;} }
+    .gcard{position:relative;background:#0e151e;border:1px solid #394456;border-radius:12px;overflow:hidden}
+    .gcard img{display:block;width:100%;height:120px;object-fit:cover}
+    .gcard .cap{padding:8px;font-size:13px;color:#cbd6e3}
+    .gtools{display:flex;gap:6px;padding:8px;flex-wrap:wrap}
+    .gtools .btn.add{border-color:#39557a}
+
+    /* 하단 바 */
+    .footer{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+    ::-webkit-scrollbar{height:10px;width:10px}
+    ::-webkit-scrollbar-thumb{background:#2b374a;border-radius:999px}
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="title">
+        <h1 id="hTitle">좌클릭하여 제목을 수정하세요.</h1>
+        <span id="hBadge" class="badge">좌클릭하여 설명을 수정하세요.</span>
+      </div>
+      <!-- 모바일 전용 상단 툴바: 일정 선택 + 관리 -->
+      <div class="toolbar">
+        <select id="planSelect" class="select" title="일정 선택"></select>
+        <button class="btn" id="newPlanBtn">새 일정</button>
+        <button class="btn" id="renamePlanBtn">이름 바꾸기</button>
+        <button class="btn danger" id="deletePlanBtn">삭제</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="explain">
+      <h2 style="margin:0 0 8px 0;font-size:18px">상단: 여행 설명</h2>
+      <div id="intro" contenteditable="true">
+        여기에 여행의 목적, 분위기, 이동수단(지하철/렌트/오토바이), 숙소 위치, 예산 등을 자유롭게 적어주세요. 이 텍스트는 자동 저장됩니다.
+      </div>
+      <div class="hint">Tip: 내용을 수정하면 1초 뒤 자동 저장됩니다.</div>
+    </section>
+
+    <section class="board">
+      <div class="bar">
+        <strong>내 일정</strong>
+        <div class="footer">
+          <button class="btn" id="saveBtn">즉시 저장</button>
+          <button class="btn" id="loadBtn">저장 불러오기</button>
+          <button class="btn" id="clearBtn">모두 초기화</button>
+          <button class="btn" id="exportBtn">일정 JSON 내보내기</button>
+          <label class="btn" for="importFile" style="cursor:pointer">JSON 불러오기</label>
+          <input id="importFile" type="file" accept="application/json" style="display:none" />
+          <!-- Realtime sync controls -->
+          <input id="roomId" placeholder="공유 코드(예: sapporo-trip)" style="padding:6px 8px;border-radius:8px;border:1px solid #334055;background:#0e151e;color:#e6edf3;min-width:160px" />
+          <button class="btn" id="syncToggle">실시간 동기화: 꺼짐</button>
+          <button class="btn" id="shareBtn" title="현재 페이지의 공유 링크 복사">공유 링크 복사</button>
+        </div>
+      </div>
+      <div id="schedule" class="slots" aria-label="일정 영역"></div>
+    </section>
+
+    <section class="gallery">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong>관광지 갤러리</strong>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" id="addPlaceBtn">관광지 추가</button>
+        </div>
+      </div>
+      <div id="galleryGrid" class="grid"></div>
+    </section>
+  </main>
+
+  <script>
+    // ====== 기본 데이터 ======
+    const DEFAULT_GALLERY = [
+      { id:"odori", title:"오도리 공원", img:"https://images.unsplash.com/photo-1511732351157-1865efcb7b7b?q=80&w=1200&auto=format&fit=crop", link:null },
+      { id:"beer", title:"삿포로 맥주 박물관", img:"https://images.unsplash.com/photo-1545431781-c66d5fdbaf93?q=80&w=1200&auto=format&fit=crop", link:null },
+      { id:"moiwa", title:"모이와 산 로프웨이", img:"https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1200&auto=format&fit=crop", link:null },
+      { id:"otaru", title:"오타루 운하", img:"https://images.unsplash.com/photo-1587563228632-4f7594dfdf0f?q=80&w=1200&auto=format&fit=crop", link:null },
+      { id:"nijo", title:"니조 시장", img:"https://images.unsplash.com/photo-1488459716781-31db52582fe9?q=80&w=1200&auto=format&fit=crop", link:null },
+      { id:"jozankei", title:"조잔케이 온천", img:"https://images.unsplash.com/photo-1501555088652-021faa106b9b?q=80&w=1200&auto=format&fit=crop", link:null },
+      { id:"clock", title:"삿포로 시계탑", img:"https://images.unsplash.com/photo-1607603751895-d1715e4a7669?q=80&w=1200&auto=format&fit=crop", link:null },
+      { id:"susukino", title:"스스키노", img:"https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?q=80&w=1200&auto=format&fit=crop", link:null }
+    ];
+
+    // ====== 앱 상태 ======
+    const APP_KEY = 'itinerary-app-v1';
+    let app = { activeId: null, items: [] };
+    const byId = id => document.getElementById(id);
+    const uid = () => Math.random().toString(36).slice(2,9);
+
+    function newPlanTemplate(name='새 일정'){
+      return {
+        id: 'plan-'+uid(),
+        name,
+        headerTitle: '좌클릭하여 제목을 수정하세요.',
+        headerBadge: '좌클릭하여 설명을 수정하세요.',
+        intro: '',
+        schedule: [],
+        gallery: [],
+        roomId: '' // 실시간 동기화 코드
+      };
+    }
+
+    function saveApp(){ localStorage.setItem(APP_KEY, JSON.stringify(app)); }
+    function loadApp(){
+      const raw = localStorage.getItem(APP_KEY);
+      if(raw){ try{ app = JSON.parse(raw);}catch{} }
+      // 단일 일정에서 다중 일정으로 마이그레이션(구버전 호환)
+      const OLD_KEY = 'sapporo-itinerary-v6-rt';
+      if(app.items.length===0){
+        const oldRaw = localStorage.getItem(OLD_KEY);
+        if(oldRaw){
+          try{
+            const s = JSON.parse(oldRaw);
+            const plan = newPlanTemplate('기존 일정');
+            plan.headerTitle = s.headerTitle||plan.headerTitle;
+            plan.headerBadge = s.headerBadge||plan.headerBadge;
+            plan.intro = s.intro||'';
+            plan.schedule = s.schedule||[];
+            plan.gallery = s.gallery||[];
+            app.items.push(plan); app.activeId = plan.id; saveApp();
+          }catch{}
+        }
+      }
+      if(app.items.length===0){ const p=newPlanTemplate('첫 일정'); app.items.push(p); app.activeId=p.id; saveApp(); }
+      if(!app.activeId) app.activeId = app.items[0].id;
+    }
+    const cur = ()=> app.items.find(p=>p.id===app.activeId);
+
+    // ====== 플랜 선택 드롭다운 ======
+    function renderPlanSelect(){
+      const sel = byId('planSelect'); if(!sel) return;
+      sel.innerHTML = app.items.map(p => `<option value="${p.id}" ${p.id===app.activeId?'selected':''}>${p.name} (${p.schedule.length})</option>`).join('');
+      sel.onchange = ()=> switchPlan(sel.value);
+    }
+
+    function switchPlan(id){
+      if(id===app.activeId) return;
+      stopSync();
+      app.activeId = id; saveApp();
+      applyState();
+    }
+
+    function createPlan(){
+      const name = prompt('새 일정 이름을 입력하세요','새 일정'); if(!name) return;
+      const p = newPlanTemplate(name.trim()); app.items.push(p); app.activeId=p.id; saveApp();
+      applyState();
+    }
+    function renamePlan(){
+      const p = cur(); if(!p) return; const name=prompt('일정 이름', p.name); if(name===null) return; p.name=name.trim()||p.name; saveApp(); applyState();
+    }
+    function deletePlan(){
+      if(!confirm('이 일정을 삭제할까요?')) return;
+      const idx = app.items.findIndex(x=>x.id===app.activeId); if(idx<0) return; app.items.splice(idx,1);
+      if(app.items.length===0){ const p=newPlanTemplate('첫 일정'); app.items.push(p); }
+      app.activeId = app.items[0].id; saveApp();
+      stopSync(); applyState();
+    }
+
+    // ====== 제목/배지 좌클릭 편집 ======
+    function bindHeaderEdit(){
+      const hTitle = byId('hTitle');
+      const hBadge = byId('hBadge');
+      const edit = (el,key,msg)=>{
+        if(!el) return;
+        el.addEventListener('click', ()=>{
+          const c = cur();
+          const curVal = c[key] || el.textContent;
+          const val = prompt(msg, curVal);
+          if(val===null) return;
+          el.textContent = val.trim()||el.textContent;
+          c[key] = el.textContent; saveState();
+        });
+      }
+      edit(hTitle,'headerTitle','페이지 제목을 입력하세요');
+      edit(hBadge,'headerBadge','배지 캡션을 입력하세요');
+    }
+
+    // ====== 갤러리 ======
+    function renderGallery(){
+      const c = cur();
+      const list = c.gallery && c.gallery.length ? c.gallery : DEFAULT_GALLERY;
+      const grid = byId('galleryGrid'); if(!grid) return; grid.innerHTML='';
+      list.forEach(item=>{
+        const card = document.createElement('div'); card.className='gcard';
+        card.innerHTML = `
+          <img src="${item.img}" alt="${item.title}" draggable="false">
+          <div class="cap">${item.title}</div>
+          <div class="gtools">
+            <button class="btn add">일정에 추가</button>
+            <button class="btn" title="편집">편집</button>
+            <button class="btn danger" title="삭제">삭제</button>
+          </div>`;
+        // 모바일: 탭으로 바로 추가
+        const addHandler = ()=>{
+          const inst = { uid:uid(), refId:item.id, title:item.title, img:item.img, note:'', link:item.link||null };
+          c.schedule.push(inst); saveState(); renderSchedule(); renderPlanSelect();
+        };
+        card.querySelector('.btn.add').addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); addHandler(); });
+        const img = card.querySelector('img');
+        img.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); addHandler(); });
+        img.addEventListener('touchstart', (e)=>{ if(e.cancelable) e.preventDefault(); }, {passive:false});
+        img.addEventListener('touchend', (e)=>{ if(e.cancelable) e.preventDefault(); addHandler(); }, {passive:false});
+
+        // 편집/삭제
+        card.querySelector('[title="편집"]').addEventListener('click', ()=> editPlace(item.id));
+        card.querySelector('[title="삭제"]').addEventListener('click', ()=> removePlace(item.id));
+
+        // 우클릭 편집도 그대로 지원(선택)
+        card.addEventListener('contextmenu', (e)=>{ e.preventDefault(); editPlace(item.id); });
+
+        grid.appendChild(card);
+      });
+    }
+
+    function addPlace(){
+      const c = cur();
+      const title = prompt('여행지 이름을 입력하세요'); if(!title) return;
+      const img = prompt('대표 이미지 URL을 입력하세요'); if(!img) return;
+      const link = prompt('기본 링크(URL, 선택)')||null;
+      const id = title.toLowerCase().replace(/\s+/g,'-')+'-'+uid();
+      const item = { id, title, img, link: link&&link.trim()? (/^(https?:)\/\//i.test(link)?link:'https://'+link.trim()): null };
+      const list = c.gallery && c.gallery.length ? c.gallery : (c.gallery=[...DEFAULT_GALLERY]);
+      list.push(item); saveState(); renderGallery();
+    }
+
+    function editPlace(id){
+      const c = cur();
+      const list = c.gallery && c.gallery.length ? c.gallery : (c.gallery=[...DEFAULT_GALLERY]);
+      const idx = list.findIndex(x=>x.id===id); if(idx<0) return;
+      const g = list[idx];
+      const title = prompt('여행지 이름', g.title); if(title===null) return;
+      const img = prompt('대표 이미지 URL', g.img); if(img===null) return;
+      const link = prompt('기본 링크(URL, 비우면 없음)', g.link||''); if(link===null) return;
+      g.title = title.trim()||g.title;
+      g.img = img.trim()||g.img;
+      g.link = link.trim()? (/^(https?:)\/\//i.test(link)?link:'https://'+link.trim()) : null;
+      saveState(); renderGallery(); renderSchedule();
+    }
+
+    function removePlace(id){
+      const c = cur();
+      const list = c.gallery && c.gallery.length ? c.gallery : (c.gallery=[...DEFAULT_GALLERY]);
+      const idx = list.findIndex(x=>x.id===id); if(idx<0) return;
+      if(!confirm('이 관광지를 갤러리에서 삭제할까요?')) return;
+      list.splice(idx,1); saveState(); renderGallery();
+    }
+
+    // ====== 일정 렌더(모바일: 위/아래 버튼으로 순서 변경) ======
+    function renderSchedule(){
+      const c = cur();
+      const el = byId('schedule'); if(!el) return; el.innerHTML='';
+      c.schedule.forEach((s,i)=> el.appendChild(makeSchedCard(s,i)) );
+    }
+
+    function makeSchedCard(s, index){
+      const card = document.createElement('div'); card.className = 'card';
+      const img = document.createElement('img'); img.src=s.img; img.alt=s.title; img.draggable=false;
+      img.addEventListener('click', ()=>{ if(s.link) window.open(s.link,'_blank'); });
+      img.addEventListener('contextmenu', (e)=>{ e.preventDefault(); const c=cur(); const curUrl = s.link||''; const url = prompt('이 카드에 연결할 링크를 입력하세요 (빈칸=삭제)', curUrl); if(url===null) return; s.link = url.trim()? (/^(https?:)\/\//i.test(url)?url:'https://'+url.trim()) : null; saveState(); renderSchedule(); });
+
+      const body = document.createElement('div'); body.className='body';
+      const t = document.createElement('div'); t.className='title'; t.textContent=s.title; body.appendChild(t);
+
+      const noteBtn = document.createElement('button'); noteBtn.className='noteToggle btn mini'; noteBtn.textContent='메모 펼치기';
+      const noteWrap = document.createElement('div'); noteWrap.className='note';
+      const ta = document.createElement('textarea'); ta.placeholder='이동/식사/주의사항 등을 적어주세요'; ta.value=s.note||'';
+      ta.addEventListener('input', ()=>{ s.note=ta.value; throttleSave(); });
+      noteWrap.appendChild(ta);
+      noteBtn.addEventListener('click', ()=>{ const open = noteWrap.style.display==='block'; noteWrap.style.display = open? 'none':'block'; noteBtn.textContent = open? '메모 펼치기':'메모 접기'; });
+
+      const tools = document.createElement('div'); tools.className='toolbar-inline';
+      const up = document.createElement('button'); up.className='btn mini'; up.textContent='▲';
+      const down = document.createElement('button'); down.className='btn mini'; down.textContent='▼';
+      const del = document.createElement('button'); del.className='btn danger mini'; del.textContent='제거';
+
+      up.addEventListener('click', ()=> moveItem(index, -1));
+      down.addEventListener('click', ()=> moveItem(index, +1));
+      del.addEventListener('click', ()=>{ const c=cur(); const idx = c.schedule.indexOf(s); if(idx>-1){ c.schedule.splice(idx,1); saveState(); renderSchedule(); renderPlanSelect(); }});
+
+      tools.appendChild(up); tools.appendChild(down); tools.appendChild(del);
+
+      if(s.link){ img.title=s.link; }
+
+      card.appendChild(img); card.appendChild(body); body.appendChild(noteBtn); body.appendChild(noteWrap); body.appendChild(tools);
+      return card;
+    }
+
+    function moveItem(index, delta){
+      const c = cur(); const to = index + delta;
+      if(to<0 || to>=c.schedule.length) return;
+      const [item] = c.schedule.splice(index,1);
+      c.schedule.splice(to,0,item);
+      saveState(); renderSchedule();
+    }
+
+    // ====== 저장/불러오기/내보내기 ======
+    let saveTimer=null; const throttleSave = ()=>{ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,800); };
+    function bindButtons(){
+      byId('saveBtn').addEventListener('click', saveState);
+      byId('loadBtn').addEventListener('click', ()=>{ loadApp(); applyState(); });
+      byId('clearBtn').addEventListener('click', ()=>{ if(confirm('현재 일정의 모든 내용을 초기화할까요?')){ const c=cur(); c.intro=''; c.headerTitle=''; c.headerBadge=''; c.schedule=[]; c.gallery=[]; saveState(); applyState(); }});
+      byId('exportBtn').addEventListener('click', ()=>{ const c=cur(); const blob = new Blob([JSON.stringify(c,null,2)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=(c.name||'itinerary')+'.json'; a.click(); URL.revokeObjectURL(url); });
+      byId('importFile').addEventListener('change', (e)=>{ const file = e.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = ()=>{ try{ const data = JSON.parse(reader.result); const c=cur(); Object.assign(c, { headerTitle:data.headerTitle||c.headerTitle, headerBadge:data.headerBadge||c.headerBadge, intro:data.intro||'', schedule:data.schedule||[], gallery:data.gallery||[] }); applyState(); saveState(); }catch(err){ alert('JSON 형식이 올바르지 않습니다.'); } }; reader.readAsText(file); });
+      byId('addPlaceBtn').addEventListener('click', addPlace);
+
+      byId('newPlanBtn').addEventListener('click', createPlan);
+      byId('renamePlanBtn').addEventListener('click', renamePlan);
+      byId('deletePlanBtn').addEventListener('click', deletePlan);
+    }
+
+    // ====== 흐름 화살표는 모바일에서 생략(간단 UI) ======
+
+    // ====== 상태 적용 ======
+    function applyState(){
+      const c = cur();
+      byId('hTitle').textContent = c.headerTitle || '좌클릭하여 제목을 수정하세요.';
+      byId('hBadge').textContent = c.headerBadge || '좌클릭하여 설명을 수정하세요.';
+      byId('intro').innerText = c.intro || '';
+      byId('roomId').value = c.roomId || '';
+      renderPlanSelect();
+      renderGallery();
+      renderSchedule();
+    }
+
+    // ====== 설명문 자동저장 ======
+    function bindIntro(){ const intro=byId('intro'); intro.addEventListener('input', ()=>{ const c=cur(); c.intro=intro.innerText; throttleSave(); }); }
+
+    // ====== Firebase 실시간 동기화(선택) ======
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyBnE9puYTVB3tSkCWf7G9um0Rx36jY1qcA",
+      authDomain: "trip-ece7e.firebaseapp.com",
+      projectId: "trip-ece7e",
+    };
+    let fb = { app:null, db:null, auth:null, unsub:null, sync:false, room:null, selfId: Math.random().toString(36).slice(2,10) };
+    async function initFirebase(){ if(fb.app) return; if(!FIREBASE_CONFIG.apiKey){ console.warn('Firebase 미설정'); return; } fb.app = firebase.initializeApp(FIREBASE_CONFIG); fb.db = firebase.firestore(); fb.auth = firebase.auth(); try{ await fb.auth.signInAnonymously(); }catch(e){ console.warn(e); } try{ await fb.db.enablePersistence({ synchronizeTabs: true }); }catch(e){} }
+    const roomDoc = (roomId)=> fb.db.collection('rooms').doc(roomId);
+    let writeTimer=null; let lastRemoteRev = 0;
+    function pushStateDebounced(){ if(!fb.sync || !fb.room) return; clearTimeout(writeTimer); writeTimer = setTimeout(async()=>{ try{ const payload = { state: cur(), rev: Date.now(), from: fb.selfId }; await roomDoc(fb.room).set(payload, { merge: true }); }catch(e){ console.error(e); } }, 350); }
+    async function startSync(roomId){ await initFirebase(); if(!fb.db){ alert('Firebase 설정이 필요합니다.'); return; } const c=cur(); c.roomId = roomId; fb.room = roomId; fb.sync = true; await roomDoc(roomId).set({ state: c, rev: Date.now(), from: fb.selfId }, { merge: true }); if(fb.unsub) fb.unsub(); fb.unsub = roomDoc(roomId).onSnapshot((snap)=>{ const data = snap.data(); if(!data) return; if(data.from === fb.selfId) return; if(data.rev && data.rev <= lastRemoteRev) return; lastRemoteRev = data.rev || Date.now(); const incoming = data.state; const target = cur(); if(target && target.id===incoming.id){ Object.assign(target, incoming); applyState(); saveState(); } }); const url = new URL(location.href); url.searchParams.set('room', roomId); history.replaceState({}, '', url); document.getElementById('syncToggle').textContent = '실시간 동기화: 켜짐'; saveApp(); }
+    function stopSync(){ if(fb.unsub) fb.unsub(); fb.unsub=null; fb.sync=false; fb.room=null; const url = new URL(location.href); url.searchParams.delete('room'); history.replaceState({}, '', url); document.getElementById('syncToggle').textContent = '실시간 동기화: 꺼짐'; }
+    ;(function bindRealtimeUI(){ const roomInput = document.getElementById('roomId'); const syncBtn = document.getElementById('syncToggle'); const shareBtn = document.getElementById('shareBtn');
+      syncBtn.addEventListener('click', async()=>{ const rid = roomInput.value.trim(); if(!fb.sync){ if(!rid){ alert('공유 코드를 먼저 입력하세요. 예: sapporo-trip'); return; } await startSync(rid); } else { stopSync(); } });
+      shareBtn.addEventListener('click', ()=>{ const rid = roomInput.value.trim(); const url = new URL(location.href); if(rid) url.searchParams.set('room', rid); navigator.clipboard.writeText(url.toString()).then(()=>{ shareBtn.textContent='복사됨!'; setTimeout(()=>shareBtn.textContent='공유 링크 복사',1200); }); });
+      const urlRoom = new URL(location.href).searchParams.get('room'); if(urlRoom){ roomInput.value = urlRoom; startSync(urlRoom); }
+    })();
+
+    // ====== 저장 트리거(모바일에서도) ======
+    function saveState(){ saveApp(); pushStateDebounced(); }
+
+    // ====== 시작 ======
+    function init(){
+      loadApp();
+      bindHeaderEdit();
+      bindIntro();
+      bindButtons();
+      applyState();
+    }
+    init();
+  </script>
+</body>
+</html>
