@@ -242,18 +242,19 @@
             <button class="btn" title="편집">편집</button>
             <button class="btn danger" title="삭제">삭제</button>
           </div>`;
+
         const addHandler = ()=>{
           const inst = { uid:uid(), refId:item.id, title:item.title, img:item.img, note:'', link:item.link||null };
           c.schedule.push(inst); saveState(); renderSchedule(); renderPlanSelect();
         };
-        // 버튼으로만 추가 (요청사항): 이미지 클릭으로는 추가하지 않음
+        // 버튼으로만 추가 (이미지 클릭으로 추가하지 않음)
         card.querySelector('.btn.add').addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); addHandler(); });
 
         // 편집/삭제
         card.querySelector('[title="편집"]').addEventListener('click', ()=> editPlace(item.id));
         card.querySelector('[title="삭제"]').addEventListener('click', ()=> removePlace(item.id));
 
-        // 우클릭 편집도 지원(선택)
+        // 우클릭 편집(선택)
         card.addEventListener('contextmenu', (e)=>{ e.preventDefault(); editPlace(item.id); });
 
         grid.appendChild(card);
@@ -375,13 +376,63 @@
     async function initFirebase(){ if(fb.app) return; if(!FIREBASE_CONFIG.apiKey){ console.warn('Firebase 미설정'); return; } fb.app = firebase.initializeApp(FIREBASE_CONFIG); fb.db = firebase.firestore(); fb.auth = firebase.auth(); try{ await fb.auth.signInAnonymously(); }catch(e){ console.warn(e); } try{ await fb.db.enablePersistence({ synchronizeTabs: true }); }catch(e){} }
     const roomDoc = (roomId)=> fb.db.collection('rooms').doc(roomId);
     let writeTimer=null; let lastRemoteRev = 0;
-    function pushStateDebounced(){ if(!fb.sync || !fb.room) return; clearTimeout(writeTimer); writeTimer = setTimeout(async()=>{ try{ const payload = { state: cur(), rev: Date.now()ow(), from: fb.selfId }; await roomDoc(fb.room).set(payload, { merge: true }); }catch(e){ console.error(e); } }, 350); }
-    async function startSync(roomId){ await initFirebase(); if(!fb.db){ alert('Firebase 설정이 필요합니다.'); return; } const c=cur(); c.roomId = roomId; fb.room = roomId; fb.sync = true; await roomDoc(roomId).set({ state: c, rev: Date.now()ow(), from: fb.selfId }, { merge: true }); if(fb.unsub) fb.unsub(); fb.unsub = roomDoc(roomId).onSnapshot((snap)=>{ const data = snap.data(); if(!data) return; if(data.from === fb.selfId) return; if(data.rev && data.rev <= lastRemoteRev) return; lastRemoteRev = data.rev || Date.now()ow(); const incoming = data.state; const target = cur(); if(target && target.id===incoming.id){ Object.assign(target, incoming); applyState(); saveState(); } }); const url = new URL(location.href); url.searchParams.set('room', roomId); history.replaceState({}, '', url); document.getElementById('syncToggle').textContent = '실시간 동기화: 켜짐'; saveApp(); }
-    function stopSync(){ if(fb.unsub) fb.unsub(); fb.unsub=null; fb.sync=false; fb.room=null; const url = new URL(location.href); url.searchParams.delete('room'); history.replaceState({}, '', url); document.getElementById('syncToggle').textContent = '실시간 동기화: 꺼짐'; }
+    function pushStateDebounced(){ if(!fb.sync || !fb.room) return; clearTimeout(writeTimer); writeTimer = setTimeout(async()=>{ try{ const payload = { state: cur(), rev: Date.now(), from: fb.selfId }; await roomDoc(fb.room).set(payload, { merge: true }); }catch(e){ console.error(e); } }, 350); }
+    async function startSync(roomId){
+      await initFirebase();
+      if(!fb.db){ alert('Firebase 설정이 필요합니다.'); return; }
+      const c=cur();
+      c.roomId = roomId;
+      fb.room = roomId;
+      fb.sync = true;
+      await roomDoc(roomId).set({ state: c, rev: Date.now(), from: fb.selfId }, { merge: true });
+      if(fb.unsub) fb.unsub();
+      fb.unsub = roomDoc(roomId).onSnapshot((snap)=>{
+        const data = snap.data();
+        if(!data) return;
+        if(data.from === fb.selfId) return;
+        if(data.rev && data.rev <= lastRemoteRev) return;
+        lastRemoteRev = data.rev || Date.now();
+        const incoming = data.state;
+        const target = cur();
+        if(target && target.id===incoming.id){
+          Object.assign(target, incoming);
+          applyState();
+          saveState();
+        }
+      });
+      const url = new URL(location.href);
+      url.searchParams.set('room', roomId);
+      history.replaceState({}, '', url);
+      document.getElementById('syncToggle').textContent = '실시간 동기화: 켜짐';
+      saveApp();
+    }
+    function stopSync(){
+      if(fb.unsub) fb.unsub();
+      fb.unsub=null;
+      fb.sync=false;
+      fb.room=null;
+      const url = new URL(location.href);
+      url.searchParams.delete('room');
+      history.replaceState({}, '', url);
+      document.getElementById('syncToggle').textContent = '실시간 동기화: 꺼짐';
+    }
 
-    ;(function bindRealtimeUI(){ const roomInput = document.getElementById('roomId'); const syncBtn = document.getElementById('syncToggle');
-      syncBtn.addEventListener('click', async()=>{ const rid = roomInput.value.trim(); if(!fb.sync){ if(!rid){ alert('공유 코드를 먼저 입력하세요. 예: sapporo-trip'); return; } await startSync(rid); } else { stopSync(); } });
-      const urlRoom = new URL(location.href).searchParams.get('room'); if(urlRoom){ roomInput.value = urlRoom; startSync(urlRoom); }
+    (function bindRealtimeUI(){
+      const roomInput = document.getElementById('roomId');
+      const syncBtn = document.getElementById('syncToggle');
+      if(syncBtn){
+        syncBtn.addEventListener('click', async()=>{
+          const rid = roomInput ? roomInput.value.trim() : '';
+          if(!fb.sync){
+            if(!rid){ alert('공유 코드를 먼저 입력하세요. 예: sapporo-trip'); return; }
+            await startSync(rid);
+          } else {
+            stopSync();
+          }
+        });
+      }
+      const urlRoom = new URL(location.href).searchParams.get('room');
+      if(urlRoom && roomInput){ roomInput.value = urlRoom; startSync(urlRoom); }
     })();
 
     // ====== 시작 ======
