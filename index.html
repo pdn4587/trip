@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>여러 일정 관리 · PC (Ably)</title>
+  <title>여러 일정 관리 · PC</title>
   <style>
     :root{ --bg:#0b0f14; --panel:#121821; --muted:#2a3443; --text:#e6edf3; --accent:#53b3ff; --accent2:#82e0aa; --danger:#ff6b6b; }
     *{box-sizing:border-box}
@@ -43,10 +43,10 @@
     .card .note{margin-top:8px;display:none}
     .card .note textarea{width:100%;min-height:70px;background:#0b1118;color:#d9e4ef;border:1px solid #334055;border-radius:8px;padding:8px;resize:vertical}
     .card .toolbar{position:absolute;top:6px;right:6px;display:flex;gap:6px}
-    .card.flow-right::after{content:\"\";position:absolute;right:-12px;top:50%;transform:translateY(-50%);width:12px;height:2px;background:#3c5674}
-    .card.flow-right::before{content:\"›\";position:absolute;right:-16px;top:50%;transform:translateY(-50%);font-weight:800;color:#7fa6d1}
-    .card.flow-down::after{content:\"\";position:absolute;left:50%;bottom:-12px;transform:translateX(-50%);width:2px;height:12px;background:#3c5674}
-    .card.flow-down::before{content:\"⌄\";position:absolute;left:50%;bottom:-20px;transform:translateX(-50%);font-weight:800;color:#7fa6d1}
+    .card.flow-right::after{content:"";position:absolute;right:-12px;top:50%;transform:translateY(-50%);width:12px;height:2px;background:#3c5674}
+    .card.flow-right::before{content:"›";position:absolute;right:-16px;top:50%;transform:translateY(-50%);font-weight:800;color:#7fa6d1}
+    .card.flow-down::after{content:"";position:absolute;left:50%;bottom:-12px;transform:translateX(-50%);width:2px;height:12px;background:#3c5674}
+    .card.flow-down::before{content:"⌄";position:absolute;left:50%;bottom:-20px;transform:translateX(-50%);font-weight:800;color:#7fa6d1}
     .card.no-flow::after,.card.no-flow::before{display:none}
     .link-dot{position:absolute;top:8px;left:8px;width:10px;height:10px;border-radius:50%;background:var(--accent2);box-shadow:0 0 0 2px rgba(130,224,170,.25)}
     .add-slot{width:180px;min-height:110px;background:#0e151e;border:1px dashed #394456;border-radius:12px;color:#7d8aa1;display:flex;align-items:center;justify-content:center;font-size:14px}
@@ -119,7 +119,7 @@
         </section>
 
         <div class="wrap" style="padding:18px 0 28px;display:flex;justify-content:center">
-          <a href="https://pdn4587.github.io/trip/mobile/?room=trip" class="btn" style="text-align:center">모바일 버전으로 보기</a>
+          <a href="./mobile/" class="btn" style="text-align:center">모바일 버전으로 보기</a>
         </div>
       </main>
     </div>
@@ -146,12 +146,12 @@
     const cur = ()=> app.items.find(p=>p.id===app.activeId);
 
     function newPlanTemplate(name='새 일정'){
-      return { id:'plan-'+uid(), name, headerTitle:'좌클릭하여 제목을 수정하세요.', headerBadge:'좌클릭하여 설명을 수정하세요.', intro:'', schedule:[], gallery:[], roomId:'' };
+      return { id:'plan-'+uid(), name, headerTitle:'좌클릭하여 제목을 수정하세요.', headerBadge:'좌클릭하여 설명을 수정하세요.', intro:'', schedule:[], gallery:[...DEFAULT_GALLERY], roomId:'' };
     }
     function saveApp(){ localStorage.setItem(APP_KEY, JSON.stringify(app)); }
     function loadApp(){
       const raw = localStorage.getItem(APP_KEY); if(raw){ try{ app = JSON.parse(raw);}catch{} }
-      if(app.items.length===0){ const p=newPlanTemplate('첫 일정'); p.gallery=[...DEFAULT_GALLERY]; app.items.push(p); app.activeId=p.id; saveApp(); }
+      if(app.items.length===0){ const p=newPlanTemplate('첫 일정'); app.items.push(p); app.activeId=p.id; saveApp(); }
       if(!app.activeId) app.activeId = app.items[0].id;
     }
 
@@ -173,8 +173,8 @@
       else if(actions.includes('삭제')) deletePlan(id);
       else if(actions.includes('복제')) duplicatePlan(id);
     }
-    function switchPlan(id){ if(id===app.activeId) return; stopSync(); app.activeId=id; saveApp(); applyState(); renderTabs(); }
-    function createPlan(){ const name=prompt('새 일정 이름','새 일정'); if(!name) return; const p=newPlanTemplate(name.trim()); p.gallery=[...DEFAULT_GALLERY]; app.items.push(p); app.activeId=p.id; saveState(); applyState(); renderTabs(); }
+    function switchPlan(id){ if(id===app.activeId) return; stopSync(); app.activeId=id; saveState(); applyState(); renderTabs(); }
+    function createPlan(){ const name=prompt('새 일정 이름','새 일정'); if(!name) return; const p=newPlanTemplate(name.trim()); app.items.push(p); app.activeId=p.id; saveState(); applyState(); renderTabs(); }
     function renamePlan(id){ const p=app.items.find(x=>x.id===id); if(!p) return; const name=prompt('일정 이름', p.name); if(name===null) return; p.name=name.trim()||p.name; saveState(); renderTabs(); }
     function deletePlan(id){ if(!confirm('이 일정을 삭제할까요?')) return; const idx=app.items.findIndex(x=>x.id===id); if(idx<0) return; app.items.splice(idx,1); if(app.items.length===0){ const p=newPlanTemplate('첫 일정'); app.items.push(p); } app.activeId=app.items[0].id; saveState(); stopSync(); applyState(); renderTabs(); }
     function duplicatePlan(id){ const p=app.items.find(x=>x.id===id); if(!p) return; const copy=JSON.parse(JSON.stringify(p)); copy.id='plan-'+uid(); copy.name=p.name+' 복사'; copy.roomId=''; app.items.push(copy); app.activeId=copy.id; saveState(); applyState(); renderTabs(); }
@@ -313,27 +313,39 @@
       byId('deletePlanBtn').addEventListener('click', ()=> deletePlan(app.activeId));
     }
     function updateFlowArrows(){ const cont=byId('schedule'); const cards=Array.from(cont.querySelectorAll('.card')); cards.forEach(c=> c.classList.remove('flow-right','flow-down','no-flow') ); requestAnimationFrame(()=>{ for(let i=0;i<cards.length;i++){ const c=cards[i]; const n=cards[i+1]; if(!n){ c.classList.add('no-flow'); break; } const r1=c.getBoundingClientRect(); const r2=n.getBoundingClientRect(); if(Math.abs(r1.top-r2.top)<10){ c.classList.add('flow-right'); } else { c.classList.add('flow-down'); } } }); }
+
     function applyState(){ const c=cur(); byId('hTitle').textContent=c.headerTitle||'좌클릭하여 제목을 수정하세요.'; byId('hBadge').textContent=c.headerBadge||'좌클릭하여 설명을 수정하세요.'; byId('intro').innerText=c.intro||''; byId('roomId').value=c.roomId||''; renderTabs(); renderGallery(); renderSchedule(); }
 
-    // ===== Realtime via Ably =====
-    const ABLY_KEY = "84KmnQ.XBJyCA:dtalnghkh9M4BwB3rC-gXBDikOu0djb52zWgb0tBuk4"; // TODO: 본인 Ably API Key로 교체
+    // ===== Ably realtime (rewind + hello) =====
+    const ABLY_KEY = "84KmnQ.XBJyCA:dtalnghkh9M4BwB3rC-gXBDikOu0djb52zWgb0tBuk4"; // 여기에 본인 키를 넣으세요
     let rts = { client:null, channel:null, selfId: Math.random().toString(36).slice(2,10), room:null, sync:false };
-    let writeTimer=null;
-    function pushStateDebounced(){ if(!rts.sync || !rts.channel) return; clearTimeout(writeTimer); writeTimer=setTimeout(()=>{ const payload={ state: cur(), rev: Date.now(), from: rts.selfId }; rts.channel.publish("state", payload); }, 350); }
+    let writeTimerRT=null;
+    function pushStateDebounced(){ if(!rts.sync||!rts.channel) return; clearTimeout(writeTimerRT); writeTimerRT=setTimeout(()=>{ const payload={ state: cur(), rev: Date.now(), from: rts.selfId }; rts.channel.publish("state", payload); }, 350); }
     async function startSync(roomId){
       try{
         if(!ABLY_KEY){ alert("Ably API 키를 설정하세요."); return; }
         if(!rts.client){ rts.client = new Ably.Realtime({ key: ABLY_KEY }); }
         rts.room = roomId;
-        rts.channel = rts.client.channels.get("trip:"+roomId);
+        rts.channel = rts.client.channels.get("trip:"+roomId+"?rewind=1"); // 최근 1개 자동 재생
         rts.sync = true;
         rts.channel.subscribe("state", (msg)=>{
           const data=msg.data; if(!data) return; if(data.from===rts.selfId) return;
           const incoming=data.state; const target=cur();
           if(target && target.id===incoming.id){ Object.assign(target,incoming); applyState(); saveState(); }
         });
+        // 새 참여자에게 상태 요청/응답
+        rts.channel.subscribe("hello", ()=>{
+          const payload={ state: cur(), rev: Date.now(), from: rts.selfId };
+          rts.channel.publish("state", payload);
+        });
+
         const url=new URL(location.href); url.searchParams.set('room', roomId); history.replaceState({},'',url);
         document.getElementById('syncToggle').textContent='실시간 동기화: 켜짐'; saveApp();
+
+        // 입장 인사(다른 클라이언트에게 최신 상태를 요청)
+        rts.channel.publish("hello", { from: rts.selfId });
+
+        // 현재 상태도 한 번 밀기
         pushStateDebounced();
       }catch(e){ console.error(e); alert("Ably 연결 실패"); }
     }
@@ -345,7 +357,6 @@
       const urlRoom=new URL(location.href).searchParams.get('room'); if(urlRoom){ roomInput.value=urlRoom; startSync(urlRoom); }
     })();
 
-    // saveState used by many places -> publish
     function saveState(){ saveApp(); pushStateDebounced(); }
 
     // ===== Init =====
