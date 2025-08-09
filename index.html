@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>여러 일정 관리 · 통합(PC/모바일) · Ably 자동 동기화 v2</title>
+  <title>여러 일정 관리 · 통합(PC/모바일) · Ably 자동 동기화 + 터치 DnD</title>
   <style>
     :root{ --bg:#0b0f14; --panel:#121821; --muted:#2a3443; --text:#e6edf3; --accent:#53b3ff; --accent2:#82e0aa; --danger:#ff6b6b;
       --gallery-bg:#0c1118; --gallery-bd:#3a4558; --gallery-card:#12131a; --gallery-card-bd:#3f4a5f; }
-    *{box-sizing:border-box}
+    *{box-sizing:border-box; touch-action: manipulation;}
     body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Noto Sans KR,sans-serif;-webkit-tap-highlight-color:transparent}
     a{color:var(--accent);text-decoration:none}
+    img{-webkit-user-drag:none; -webkit-touch-callout:none}
+    .gcard, .card{-webkit-user-drag:none; -webkit-touch-callout:none}
     .app{display:flex;min-height:100vh}
     .sidebar{width:260px;background:#0a0f16;border-right:1px solid #1f2a3a;position:sticky;top:0;height:100vh;overflow:auto}
     .main{flex:1;min-width:0}
@@ -74,7 +76,8 @@
       .select{flex:1; min-width:160px; border:1px solid #334055; background:#0f1620; color:#d7e2ee; padding:8px; border-radius:10px}
     }
     .mobile-tools{display:none}
-    footer{opacity:.7;font-size:12px;text-align:center;padding:16px}
+    .drag-ghost{position:fixed; pointer-events:none; z-index:9999; opacity:.9; transform:translate(-50%,-50%); border-radius:8px; overflow:hidden; box-shadow:0 6px 24px rgba(0,0,0,.35)}
+    .drag-ghost img{display:block; width:140px; height:90px; object-fit:cover}
   </style>
   <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
 </head>
@@ -131,8 +134,6 @@
           </div>
           <div id="galleryGrid" class="grid"></div>
         </section>
-
-        <footer>v2 • auto-sync room=<code>trip</code></footer>
       </main>
     </div>
   </div>
@@ -219,18 +220,22 @@
       const c=cur(); const list = c.gallery && c.gallery.length ? c.gallery : (c.gallery=[...DEFAULT_GALLERY]);
       const grid = byId('galleryGrid'); grid.innerHTML='';
       list.forEach(item=>{
-        const card = document.createElement('div'); card.className='gcard'; card.draggable=true;
+        const card = document.createElement('div'); card.className='gcard'; card.draggable=true; card.dataset.role='gallery-card'; card.dataset.gid=item.id;
         card.addEventListener('dragstart', e=> setDrag(e,{type:'gallery', id:item.id}));
         card.innerHTML = `
-          <img src="${item.img}" alt="${item.title}">
+          <img src="${item.img}" alt="${item.title}" draggable="false">
           <div class="cap">${item.title}</div>
           <div class="gtools">
-            <button class="btn" title="편집">편집</button>
-            <button class="btn danger" title="삭제">삭제</button>
+            <button class="btn" title="편집" type="button">편집</button>
+            <button class="btn danger" title="삭제" type="button">삭제</button>
           </div>`;
+        // 마우스 우클릭 편집
         card.addEventListener('contextmenu', (e)=>{ e.preventDefault(); editPlace(item.id); });
+        // 버튼
         card.querySelector('[title="편집"]').addEventListener('click', ()=> editPlace(item.id));
         card.querySelector('[title="삭제"]').addEventListener('click', ()=> removePlace(item.id));
+        // 터치 DnD 진입
+        enableTouchSource(card, {type:'gallery', id:item.id, img:item.img, title:item.title});
         grid.appendChild(card);
       });
     }
@@ -257,7 +262,7 @@
       list.splice(idx,1); saveState(); renderGallery();
     }
 
-    // ===== 드래그 & 드롭 =====
+    // ===== 드래그 & 드롭 (데스크톱) =====
     const setDrag = (ev,payload)=>{ ev.dataTransfer.setData('application/json', JSON.stringify(payload)); ev.dataTransfer.effectAllowed='move'; };
     const getDrag = (ev)=>{ try{ return JSON.parse(ev.dataTransfer.getData('application/json')); }catch{ return null } };
     const placeholder = document.createElement('div'); placeholder.className='placeholder'; placeholder.textContent='여기에 놓기';
@@ -293,13 +298,13 @@
       return add;
     }
     function makeSchedCard(s, index){
-      const card=document.createElement('div'); card.className='card'; card.setAttribute('draggable','true'); card.dataset.index=index;
+      const card=document.createElement('div'); card.className='card'; card.setAttribute('draggable','true'); card.dataset.index=index; card.dataset.role='schedule-card';
       card.addEventListener('dragstart', e=>{ dragCtx={type:'schedule', from:index}; setDrag(e,dragCtx); document.body.classList.add('dragging'); });
       card.addEventListener('dragend', ()=>{ dragCtx=null; document.body.classList.remove('dragging'); removePlaceholder(); });
       card.addEventListener('dragover', e=>{ e.preventDefault(); positionPlaceholder(card,e); });
       card.addEventListener('drop', e=>{ e.preventDefault(); e.stopPropagation(); const payload=dragCtx||getDrag(e); if(!payload) return; const insertAt=placeholderIndex(); if(insertAt===-1){ removePlaceholder(); return; } applyDrop(payload, insertAt); });
 
-      const img=document.createElement('img'); img.src=s.img; img.alt=s.title;
+      const img=document.createElement('img'); img.src=s.img; img.alt=s.title; img.draggable=false;
       img.addEventListener('click', ()=>{ if(s.link) window.open(s.link,'_blank'); });
       img.addEventListener('contextmenu', (e)=>{ e.preventDefault(); const curp=cur(); const curUrl=s.link||''; const url=prompt('카드 링크(URL, 빈칸=삭제)', curUrl); if(url===null) return; s.link = url.trim()? (/^(https?:)\/\//i.test(url)?url:'https://'+url.trim()) : null; saveState(); renderSchedule(); });
 
@@ -322,6 +327,9 @@
 
       if(s.link){ const dot=document.createElement('div'); dot.className='link-dot'; card.appendChild(dot); img.title=s.link; }
       card.appendChild(img); card.appendChild(body); body.appendChild(noteBtn); body.appendChild(noteWrap); card.appendChild(tools);
+
+      // 터치 DnD 진입
+      enableTouchSource(card, {type:'schedule', from:index, img:s.img, title:s.title});
       return card;
     }
     function bindScheduleDnD(){ const cont=byId('schedule'); cont.addEventListener('dragover', (e)=> e.preventDefault()); cont.addEventListener('drop', (e)=>{ e.preventDefault(); e.stopPropagation(); if(e.target && e.target.classList && e.target.classList.contains('add-slot')) return; const payload=dragCtx||getDrag(e); if(!payload) return; const idx=placeholderIndex(); const c=cur(); applyDrop(payload, (idx!==-1? idx : c.schedule.length)); removePlaceholder(); }); }
@@ -339,15 +347,100 @@
       bindMobileTools();
     }
     function updateFlowArrows(){ const cont=byId('schedule'); const cards=Array.from(cont.querySelectorAll('.card')); cards.forEach(c=> c.classList.remove('flow-right','flow-down','no-flow') ); requestAnimationFrame(()=>{ for(let i=0;i<cards.length;i++){ const c=cards[i]; const n=cards[i+1]; if(!n){ c.classList.add('no-flow'); break; } const r1=c.getBoundingClientRect(); const r2=n.getBoundingClientRect(); if(Math.abs(r1.top-r2.top)<10){ c.classList.add('flow-right'); } else { c.classList.add('flow-down'); } } }); }
-
     function applyState(){ const c=cur(); byId('hTitle').textContent=c.headerTitle||'좌클릭하여 제목을 수정하세요.'; byId('hBadge').textContent=c.headerBadge||'좌클릭하여 설명을 수정하세요.'; byId('intro').innerText=c.intro||''; renderTabs(); renderGallery(); renderSchedule(); }
 
-    // ===== Ably 자동 동기화 (room=trip) — 교차기기 초기ID 불일치 해결 =====
-    const ABLY_KEY = "84KmnQ.XBJyCA:dtalnghkh9M4BwB3rC-gXBDikOu0djb52zWgb0tBuk4"; // TODO: 본인 키로 교체
+    // ===== 터치 DnD 구현 (iOS 사파리 우클릭 메뉴 차단 & 드래그 시뮬레이션) =====
+    let touchDragging = null; // {payload, startX, startY, moved, ghost}
+    function enableTouchSource(el, payload){
+      el.addEventListener('touchstart', (e)=>{
+        if(e.touches.length!==1) return;
+        const t=e.touches[0];
+        touchDragging = { payload, startX:t.clientX, startY:t.clientY, moved:false, ghost:null };
+      }, {passive:true});
+
+      el.addEventListener('touchmove', (e)=>{
+        if(!touchDragging) return;
+        const t=e.touches[0];
+        const dx = t.clientX - touchDragging.startX;
+        const dy = t.clientY - touchDragging.startY;
+        if(!touchDragging.moved && Math.hypot(dx,dy) > 8){
+          touchDragging.moved = true;
+          document.body.classList.add('dragging');
+          showGhost(payload, t.clientX, t.clientY);
+        }
+        if(touchDragging.moved){
+          e.preventDefault(); // iOS 이미지/텍스트 메뉴, 스크롤 방지
+          moveGhost(t.clientX, t.clientY);
+          // placeholder 위치 갱신
+          const targetIndex = computeDropIndex(t.clientX, t.clientY);
+          const cont = byId('schedule');
+          if(targetIndex === -1){
+            removePlaceholder();
+          } else {
+            const nodes = Array.from(cont.children).filter(x=> x.classList.contains('card'));
+            const ref = nodes[targetIndex];
+            if(ref){ cont.insertBefore(placeholder, ref); } else { cont.appendChild(placeholder); }
+          }
+        }
+      }, {passive:false});
+
+      el.addEventListener('touchend', ()=>{
+        if(!touchDragging){ return; }
+        const wasMoved = touchDragging.moved;
+        hideGhost();
+        document.body.classList.remove('dragging');
+        const payload = touchDragging.payload;
+        touchDragging = null;
+
+        if(!wasMoved){ return; } // 탭만 한 경우
+        const insertAt = placeholderIndex();
+        removePlaceholder();
+        if(insertAt === -1) return; // 유효한 드롭 영역 아님
+        applyDrop(payload, insertAt);
+      }, {passive:true});
+
+      el.addEventListener('touchcancel', ()=>{
+        hideGhost(); removePlaceholder(); document.body.classList.remove('dragging'); touchDragging=null;
+      }, {passive:true});
+    }
+    function showGhost(payload, x, y){
+      const g = document.createElement('div'); g.className='drag-ghost';
+      g.innerHTML = `<img src="${payload.img || ''}" alt="">`;
+      document.body.appendChild(g);
+      touchDragging.ghost = g;
+      moveGhost(x,y);
+    }
+    function moveGhost(x,y){
+      const g = touchDragging && touchDragging.ghost; if(!g) return;
+      g.style.left = x + 'px'; g.style.top = y + 'px';
+    }
+    function hideGhost(){
+      const g = touchDragging && touchDragging.ghost;
+      if(g && g.parentNode){ g.parentNode.removeChild(g); }
+      if(touchDragging) touchDragging.ghost=null;
+    }
+    function computeDropIndex(x, y){
+      const cont = byId('schedule');
+      const cards = Array.from(cont.querySelectorAll('.card'));
+      if(cards.length===0) return 0;
+      for(let i=0;i<cards.length;i++){
+        const r = cards[i].getBoundingClientRect();
+        const midY = r.top + r.height/2;
+        const midX = r.left + r.width/2;
+        if(Math.abs(y-midY) < r.height*0.25){
+          if(x < midX) return i;
+          else return i+1;
+        }
+        if(y < midY) return i;
+      }
+      return cards.length;
+    }
+
+    // ===== Ably 자동 동기화 (room=trip) =====
+    const ABLY_KEY = "84KmnQ.XBJyCA:dtalnghkh9M4BwB3rC-gXBDikOu0djb52zWgb0tBuk4"; // 본인 키로 교체
     let rts = { client:null, channel:null, selfId: Math.random().toString(36).slice(2,10), room:"trip", sync:false };
     let writeTimerRT=null;
     let lastRev = 0;
-
     function pushStateDebounced(){
       if(!rts.sync || !rts.channel) return;
       clearTimeout(writeTimerRT);
@@ -356,25 +449,14 @@
         rts.channel.publish("state", payload);
       }, 300);
     }
-
     function mergeIncomingState(incoming, rev){
-      // 오래된 업데이트면 무시
       if(rev && lastRev && rev <= lastRev) return;
       lastRev = rev || Date.now();
-
-      // 동일 id의 플랜이 있으면 덮어쓰기, 없으면 추가하고 활성화
       const idx = app.items.findIndex(p=>p.id===incoming.id);
-      if(idx >= 0){
-        app.items[idx] = incoming;
-        app.activeId = incoming.id;
-      } else {
-        app.items.push(incoming);
-        app.activeId = incoming.id;
-      }
-      saveApp();
-      applyState();
+      if(idx >= 0){ app.items[idx] = incoming; app.activeId = incoming.id; }
+      else { app.items.push(incoming); app.activeId = incoming.id; }
+      saveApp(); applyState();
     }
-
     async function startSync(roomId){
       try{
         if(!ABLY_KEY){ console.warn("Ably 키가 없습니다."); return; }
@@ -382,34 +464,28 @@
         rts.room = roomId || "trip";
         rts.channel = rts.client.channels.get("trip:"+rts.room+"?rewind=1");
         rts.sync = true;
-
         rts.channel.subscribe("state", (msg)=>{
           const data=msg.data; if(!data) return;
           if(data.from===rts.selfId) return;
           mergeIncomingState(data.state, data.rev);
         });
-
         rts.channel.subscribe("hello", ()=>{
           const payload={ state: cur(), rev: Date.now(), from: rts.selfId };
           rts.channel.publish("state", payload);
         });
-
-        // 입장: 최신 상태 요청
         rts.channel.publish("hello", { from: rts.selfId });
-        // 현재 상태도 한번 밀어 최신을 남김
         pushStateDebounced();
-      }catch(e){
-        console.error(e);
-      }
+      }catch(e){ console.error(e); }
     }
 
-    // ===== 시작 =====
+    // ===== Init =====
     function init(){
       loadApp();
       bindHeaderEdit();
       bindIntro();
       bindButtons();
       applyState();
+      // 자동 동기화 시작
       startSync("trip");
       window.addEventListener('resize', ()=> requestAnimationFrame(updateFlowArrows));
     }
