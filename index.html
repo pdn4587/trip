@@ -119,8 +119,8 @@
       <header>
         <div class="wrap">
           <div class="title">
-            <h1 id="hTitle">우클릭을 하여 제목을 추가해주세요.</h1>
-            <span id="hBadge" class="badge">우클릭을 하여 설명을 추가해주세요.</span>
+            <h1 id="hTitle">좌클릭하여 제목을 수정하세요.</h1>
+            <span id="hBadge" class="badge">좌클릭하여 설명을 수정하세요.</span>
           </div>
         </div>
       </header>
@@ -199,8 +199,8 @@
       return {
         id: 'plan-'+uid(),
         name,
-        headerTitle: '우클릭을 하여 제목을 추가해주세요.',
-        headerBadge: '우클릭을 하여 설명을 추가해주세요.',
+        headerTitle: '좌클릭하여 제목을 수정하세요.',
+        headerBadge: '좌클릭하여 설명을 수정하세요.',
         intro: '',
         schedule: [],
         gallery: [],
@@ -289,16 +289,15 @@
       const hTitle = byId('hTitle');
       const hBadge = byId('hBadge');
       const edit = (el,key,msg)=>{
-        el.addEventListener('contextmenu', (e)=>{
-          e.preventDefault();
-          const c = cur();
-          const curVal = c[key] || el.textContent;
-          const val = prompt(msg, curVal);
-          if(val===null) return;
-          el.textContent = val.trim()||el.textContent;
-          c[key] = el.textContent; saveState();
-        })
-      }
+    el.addEventListener('click', ()=>{
+      const c = cur();
+      const curVal = c[key] || el.textContent;
+      const val = prompt(msg, curVal);
+      if(val===null) return;
+      el.textContent = val.trim()||el.textContent;
+      c[key] = el.textContent; saveState();
+    })
+  }
       edit(hTitle,'headerTitle','페이지 제목을 입력하세요');
       edit(hBadge,'headerBadge','배지 캡션을 입력하세요');
     }
