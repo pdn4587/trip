@@ -93,6 +93,34 @@
 
     /* 드래그 중 UX */
     body.dragging{ user-select:none; cursor:grabbing; }
+  
+    /* ===== 반응형 사이드바 토글 ===== */
+    .iconbtn{
+      border:1px solid #334055;
+      background:#0f1620;
+      color:#cfe0f5;
+      border-radius:10px;
+      padding:8px 10px;
+      font-size:13px;
+      cursor:pointer;
+      display:inline-flex; align-items:center; gap:6px;
+    }
+    .iconbtn[aria-pressed="true"]{
+      box-shadow:0 0 0 2px rgba(83,179,255,.2) inset;
+      border-color:#39557a;
+    }
+
+    @media (max-width: 900px){
+      .sidebar{
+        position:fixed; left:0; top:0; height:100dvh;
+        transform:translateX(-100%);
+        transition:transform .25s ease;
+        box-shadow:0 10px 30px rgba(0,0,0,.35);
+        z-index:30;
+      }
+      .sidebar.open{ transform:translateX(0); }
+    }
+
   </style>
   <!-- Firebase (for realtime sync; 그대로 유지. Supabase로 바꿀 예정이면 이 블록은 무시 가능) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -119,8 +147,9 @@
       <header>
         <div class="wrap">
           <div class="title">
-            <h1 id="hTitle">좌클릭하여 제목을 수정하세요.</h1>
-            <span id="hBadge" class="badge">좌클릭하여 설명을 수정하세요.</span>
+            <button id="menuBtn" class="iconbtn" aria-label="메뉴" aria-pressed="false" title="사이드바 열기/닫기">☰</button>
+            <h1 id="hTitle">우클릭을 하여 제목을 추가해주세요.</h1>
+            <span id="hBadge" class="badge">우클릭을 하여 설명을 추가해주세요.</span>
           </div>
         </div>
       </header>
@@ -199,8 +228,8 @@
       return {
         id: 'plan-'+uid(),
         name,
-        headerTitle: '좌클릭하여 제목을 수정하세요.',
-        headerBadge: '좌클릭하여 설명을 수정하세요.',
+        headerTitle: '우클릭을 하여 제목을 추가해주세요.',
+        headerBadge: '우클릭을 하여 설명을 추가해주세요.',
         intro: '',
         schedule: [],
         gallery: [],
@@ -289,15 +318,16 @@
       const hTitle = byId('hTitle');
       const hBadge = byId('hBadge');
       const edit = (el,key,msg)=>{
-    el.addEventListener('click', ()=>{
-      const c = cur();
-      const curVal = c[key] || el.textContent;
-      const val = prompt(msg, curVal);
-      if(val===null) return;
-      el.textContent = val.trim()||el.textContent;
-      c[key] = el.textContent; saveState();
-    })
-  }
+        el.addEventListener('contextmenu', (e)=>{
+          e.preventDefault();
+          const c = cur();
+          const curVal = c[key] || el.textContent;
+          const val = prompt(msg, curVal);
+          if(val===null) return;
+          el.textContent = val.trim()||el.textContent;
+          c[key] = el.textContent; saveState();
+        })
+      }
       edit(hTitle,'headerTitle','페이지 제목을 입력하세요');
       edit(hBadge,'headerBadge','배지 캡션을 입력하세요');
     }
@@ -528,6 +558,27 @@
       shareBtn.addEventListener('click', ()=>{ const rid = roomInput.value.trim(); const url = new URL(location.href); if(rid) url.searchParams.set('room', rid); navigator.clipboard.writeText(url.toString()).then(()=>{ shareBtn.textContent='복사됨!'; setTimeout(()=>shareBtn.textContent='공유 링크 복사',1200); }); });
       const urlRoom = new URL(location.href).searchParams.get('room'); if(urlRoom){ roomInput.value = urlRoom; startSync(urlRoom); }
     })();
-  </script>
+  
+// === Responsive sidebar toggle ===
+(function(){
+  const menuBtn = document.getElementById('menuBtn');
+  const sidebar = document.querySelector('.sidebar');
+  if(menuBtn && sidebar){
+    menuBtn.addEventListener('click', ()=>{
+      const willOpen = !sidebar.classList.contains('open');
+      sidebar.classList.toggle('open', willOpen);
+      menuBtn.setAttribute('aria-pressed', willOpen ? 'true' : 'false');
+    });
+  }
+  function syncSidebarToViewport(){
+    if(window.matchMedia('(min-width: 901px)').matches){
+      // In desktop view, keep sidebar visible (no slide state needed)
+      sidebar && sidebar.classList.remove('open');
+      menuBtn && menuBtn.setAttribute('aria-pressed','false');
+    }
+  }
+  window.addEventListener('resize', syncSidebarToViewport);
+})();
+</script>
 </body>
 </html>
