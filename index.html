@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>여러 일정 관리 · 통합(PC/모바일) · Ably 자동 동기화</title>
+  <title>여러 일정 관리 · 통합(PC/모바일) · Ably 자동 동기화 v2</title>
   <style>
     :root{ --bg:#0b0f14; --panel:#121821; --muted:#2a3443; --text:#e6edf3; --accent:#53b3ff; --accent2:#82e0aa; --danger:#ff6b6b;
       --gallery-bg:#0c1118; --gallery-bd:#3a4558; --gallery-card:#12131a; --gallery-card-bd:#3f4a5f; }
@@ -64,7 +64,6 @@
     ::-webkit-scrollbar{height:10px;width:10px}
     ::-webkit-scrollbar-thumb{background:#2b374a;border-radius:999px}
     body.dragging{ user-select:none; cursor:grabbing; }
-    /* 모바일 레이아웃: 사이드바 숨기고 상단 간단 툴바 노출 */
     @media (max-width: 900px){
       .app{display:block}
       .sidebar{display:none}
@@ -75,6 +74,7 @@
       .select{flex:1; min-width:160px; border:1px solid #334055; background:#0f1620; color:#d7e2ee; padding:8px; border-radius:10px}
     }
     .mobile-tools{display:none}
+    footer{opacity:.7;font-size:12px;text-align:center;padding:16px}
   </style>
   <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
 </head>
@@ -118,7 +118,6 @@
         <section class="board">
           <div class="bar">
             <strong>내 일정 (갤러리에서 끌어 추가 / 드래그로 순서변경)</strong>
-            <!-- 동기화 UI 제거: 자동 동기화 -->
           </div>
           <div id="schedule" class="slots" aria-label="일정 드롭 영역"></div>
         </section>
@@ -132,6 +131,8 @@
           </div>
           <div id="galleryGrid" class="grid"></div>
         </section>
+
+        <footer>v2 • auto-sync room=<code>trip</code></footer>
       </main>
     </div>
   </div>
@@ -179,7 +180,6 @@
           list.appendChild(el);
         }
       });
-      // mobile selector
       const sel = byId('planSelect');
       if(sel){
         sel.innerHTML = app.items.map(p=>`<option value="${p.id}" ${p.id===app.activeId?'selected':''}>${p.name} (${p.schedule.length})</option>`).join('');
@@ -339,12 +339,14 @@
       bindMobileTools();
     }
     function updateFlowArrows(){ const cont=byId('schedule'); const cards=Array.from(cont.querySelectorAll('.card')); cards.forEach(c=> c.classList.remove('flow-right','flow-down','no-flow') ); requestAnimationFrame(()=>{ for(let i=0;i<cards.length;i++){ const c=cards[i]; const n=cards[i+1]; if(!n){ c.classList.add('no-flow'); break; } const r1=c.getBoundingClientRect(); const r2=n.getBoundingClientRect(); if(Math.abs(r1.top-r2.top)<10){ c.classList.add('flow-right'); } else { c.classList.add('flow-down'); } } }); }
+
     function applyState(){ const c=cur(); byId('hTitle').textContent=c.headerTitle||'좌클릭하여 제목을 수정하세요.'; byId('hBadge').textContent=c.headerBadge||'좌클릭하여 설명을 수정하세요.'; byId('intro').innerText=c.intro||''; renderTabs(); renderGallery(); renderSchedule(); }
 
-    // ===== Ably 자동 동기화 (room=trip, rewind=1 + hello) =====
+    // ===== Ably 자동 동기화 (room=trip) — 교차기기 초기ID 불일치 해결 =====
     const ABLY_KEY = "84KmnQ.XBJyCA:dtalnghkh9M4BwB3rC-gXBDikOu0djb52zWgb0tBuk4"; // TODO: 본인 키로 교체
     let rts = { client:null, channel:null, selfId: Math.random().toString(36).slice(2,10), room:"trip", sync:false };
     let writeTimerRT=null;
+    let lastRev = 0;
 
     function pushStateDebounced(){
       if(!rts.sync || !rts.channel) return;
@@ -353,6 +355,24 @@
         const payload={ state: cur(), rev: Date.now(), from: rts.selfId };
         rts.channel.publish("state", payload);
       }, 300);
+    }
+
+    function mergeIncomingState(incoming, rev){
+      // 오래된 업데이트면 무시
+      if(rev && lastRev && rev <= lastRev) return;
+      lastRev = rev || Date.now();
+
+      // 동일 id의 플랜이 있으면 덮어쓰기, 없으면 추가하고 활성화
+      const idx = app.items.findIndex(p=>p.id===incoming.id);
+      if(idx >= 0){
+        app.items[idx] = incoming;
+        app.activeId = incoming.id;
+      } else {
+        app.items.push(incoming);
+        app.activeId = incoming.id;
+      }
+      saveApp();
+      applyState();
     }
 
     async function startSync(roomId){
@@ -364,13 +384,9 @@
         rts.sync = true;
 
         rts.channel.subscribe("state", (msg)=>{
-          const data=msg.data; if(!data) return; if(data.from===rts.selfId) return;
-          const incoming=data.state; const target=cur();
-          if(target && target.id===incoming.id){
-            Object.assign(target,incoming);
-            applyState();
-            saveApp(); // 로컬에도 보존
-          }
+          const data=msg.data; if(!data) return;
+          if(data.from===rts.selfId) return;
+          mergeIncomingState(data.state, data.rev);
         });
 
         rts.channel.subscribe("hello", ()=>{
@@ -394,7 +410,6 @@
       bindIntro();
       bindButtons();
       applyState();
-      // 자동 동기화 시작 (room=trip 고정)
       startSync("trip");
       window.addEventListener('resize', ()=> requestAnimationFrame(updateFlowArrows));
     }
