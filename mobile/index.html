@@ -31,7 +31,7 @@
     .explain [data-editable]{outline:none;border-radius:12px;padding:10px;background:#0e131b;border:1px dashed #394456}
     .explain .hint{font-size:12px;color:#9db0c7;margin-top:6px}
 
-    .board{margin:12px;background:var(--panel);border:1px solid var(--muted);border-radius:16px;padding:12px}
+    .board{margin:12px;background:#151e2b;border:1px solid #3e5068;border-radius:16px;padding:12px}
     .board .bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap}
     .slots{display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:10px}
     @media (max-width:520px){ .slots{grid-template-columns:1fr;} }
@@ -236,15 +236,10 @@
       });
     }
     function deletePlan(){
-      if(app.items.length<=1){ toast('마지막 일정은 삭제할 수 없어요'); return; }
-      const p = cur();
-      modal({
-        title:'일정 삭제',
-        fields:[{type:'textarea', id:'warn', label:'아래에 "삭제"라고 입력하세요', placeholder:'삭제'}],
-        confirmText:'삭제',
-        onConfirm:(inp,close)=>{ if(inp.warn.value.trim()!=='삭제') return; const idx=app.items.findIndex(x=>x.id===p.id); app.items.splice(idx,1); app.activeId = app.items[0].id; saveApp(); applyState(); close(); toast('삭제되었습니다'); }
-      });
-    }
+  if(app.items.length<=1){ toast('마지막 일정은 삭제할 수 없어요'); return; }
+  const p=cur(); const idx=app.items.findIndex(x=>x.id===p.id);
+  app.items.splice(idx,1); app.activeId = app.items[0].id; saveApp(); applyState(); toast('삭제되었습니다');
+}
 
     // ========= Title/Badge edit via modal =========
     function bindHeaderEdit(){
@@ -318,18 +313,10 @@
       });
     }
     function removePlace(id){
-      const c=cur(); const list=c.gallery && c.gallery.length ? c.gallery : (c.gallery=[...DEFAULT_GALLERY]);
-      const idx = list.findIndex(x=>x.id===id); if(idx<0) return;
-      modal({
-        title:'갤러리에서 삭제',
-        fields:[{id:'ok', label:'"삭제" 입력', placeholder:'삭제'}],
-        confirmText:'삭제',
-        onConfirm:(inp,close)=>{
-          if(inp.ok.value.trim()!=='삭제') return;
-          list.splice(idx,1); saveState(); renderGallery(); close(); toast('삭제됨');
-        }
-      });
-    }
+  const c=cur(); const list=c.gallery && c.gallery.length ? c.gallery : (c.gallery=[...DEFAULT_GALLERY]);
+  const idx = list.findIndex(x=>x.id===id); if(idx<0) return;
+  list.splice(idx,1); saveState(); renderGallery(); toast('삭제됨');
+}
 
     // ========= Schedule =========
     function renderSchedule(){
@@ -365,18 +352,7 @@
           onConfirm:(inp,close)=>{ const v=inp.url.value.trim(); s.link = v? (/^(https?:)\/\//i.test(v)?v:'https://'+v) : null; saveState(); renderSchedule(); close(); toast('링크 저장됨'); }
         });
       });
-      del.addEventListener('click', ()=>{
-        modal({
-          title:'일정에서 제거',
-          fields:[{id:'ok', label:'"삭제" 입력', placeholder:'삭제'}],
-          confirmText:'삭제',
-          onConfirm:(inp,close)=>{
-            if(inp.ok.value.trim()!=='삭제') return;
-            const c=cur(); const idx = c.schedule.indexOf(s); if(idx>-1){ c.schedule.splice(idx,1); saveState(); renderSchedule(); renderPlanSelect(); }
-            close(); toast('제거됨');
-          }
-        });
-      });
+      del.addEventListener('click', ()=>{ const c=cur(); const idx=c.schedule.indexOf(s); if(idx>-1){ c.schedule.splice(idx,1); saveState(); renderSchedule(); renderPlanSelect(); toast('제거됨'); } });
 
       tools.appendChild(up); tools.appendChild(down); tools.appendChild(linkBtn); tools.appendChild(del);
       card.appendChild(img); card.appendChild(body); body.appendChild(noteBtn); body.appendChild(noteWrap); body.appendChild(tools);
