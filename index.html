@@ -121,6 +121,20 @@
       .sidebar.open{ transform:translateX(0); }
     }
 
+  
+    /* === Mobile overlay backdrop & menu button stacking === */
+    .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);opacity:0;visibility:hidden;transition:opacity .2s ease;z-index:25}
+    .backdrop.show{opacity:1;visibility:visible}
+    #menuBtn{ position:relative; z-index:40; } /* ensure button stays above the sidebar on mobile */
+
+    /* Mobile-only helper controls */
+    @media (max-width: 900px){
+      .gcard .btn.add{ display:inline-block; margin:8px; }
+    }
+    @media (min-width: 901px){
+      .gcard .btn.add{ display:none; }
+    }
+
   </style>
   <!-- Firebase (for realtime sync; 그대로 유지. Supabase로 바꿀 예정이면 이 블록은 무시 가능) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -148,8 +162,8 @@
         <div class="wrap">
           <div class="title">
             <button id="menuBtn" class="iconbtn" aria-label="메뉴" aria-pressed="false" title="사이드바 열기/닫기">☰</button>
-            <h1 id="hTitle">우클릭을 하여 제목을 추가해주세요.</h1>
-            <span id="hBadge" class="badge">우클릭을 하여 설명을 추가해주세요.</span>
+            <h1 id="hTitle">좌클릭하여 제목을 수정하세요.</h1>
+            <span id="hBadge" class="badge">좌클릭하여 설명을 수정하세요.</span>
           </div>
         </div>
       </header>
@@ -228,8 +242,8 @@
       return {
         id: 'plan-'+uid(),
         name,
-        headerTitle: '우클릭을 하여 제목을 추가해주세요.',
-        headerBadge: '우클릭을 하여 설명을 추가해주세요.',
+        headerTitle: '좌클릭하여 제목을 수정하세요.',
+        headerBadge: '좌클릭하여 설명을 수정하세요.',
         intro: '',
         schedule: [],
         gallery: [],
@@ -318,8 +332,8 @@
       const hTitle = byId('hTitle');
       const hBadge = byId('hBadge');
       const edit = (el,key,msg)=>{
-        el.addEventListener('contextmenu', (e)=>{
-          e.preventDefault();
+        el.addEventListener('click', (e)=>{
+          
           const c = cur();
           const curVal = c[key] || el.textContent;
           const val = prompt(msg, curVal);
@@ -350,6 +364,34 @@
         card.addEventListener('contextmenu', (e)=>{ e.preventDefault(); editPlace(item.id); });
         card.querySelector('.btn').addEventListener('click', ()=> editPlace(item.id));
         card.querySelector('.btn.danger').addEventListener('click', ()=> removePlace(item.id));
+        
+        // Mobile/touch-friendly: tap to add to schedule
+        const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        if(isTouch){
+          const addHandler = ()=>{
+            const cState = cur();
+            const inst = { uid: uid(), refId: item.id, title: item.title, img: item.img, note:'', link: item.link || null };
+            // append to end of schedule
+            cState.schedule.push(inst);
+            saveState(); renderSchedule();
+          };
+          // 1) Extra "일정에 추가" button (visible only on mobile via CSS)
+          const addBtn = document.createElement('button');
+          addBtn.className = 'btn add';
+          addBtn.textContent = '일정에 추가';
+          addBtn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); addHandler(); });
+          card.querySelector('.gtools').appendChild(addBtn);
+
+          // 2) Make image tap also add (prevent default zoom/open)
+          const imgEl = card.querySelector('img');
+          if(imgEl){
+            imgEl.setAttribute('draggable','false');
+            imgEl.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); addHandler(); });
+            imgEl.addEventListener('touchstart', (e)=>{ if(e.cancelable) e.preventDefault(); }, {passive:false});
+            imgEl.addEventListener('touchend', (e)=>{ if(e.cancelable) e.preventDefault(); addHandler(); }, {passive:false});
+          }
+        }
+
         grid.appendChild(card);
       })
     }
@@ -402,6 +444,7 @@
       try{
         const c = cur();
         if(payload.type==='gallery'){
+     .type==='gallery'){
           const src = findGalleryById(payload.id); if(!src) return;
           const inst = { uid:uid(), refId:src.id, title:src.title, img:src.img, note:'', link:src.link||null };
           if(typeof insertAt==='number' && insertAt>=0 && insertAt<=c.schedule.length){ c.schedule.splice(insertAt,0,inst); }
@@ -447,6 +490,7 @@
       const img = document.createElement('img'); img.src=s.img; img.alt=s.title;
       img.addEventListener('click', ()=>{ if(s.link) window.open(s.link,'_blank'); });
       img.addEventListener('contextmenu', (e)=>{ e.preventDefault(); const c=cur(); const curUrl = s.link||''; const url = prompt('이 카드에 연결할 링크를 입력하세요 (빈칸=삭제)', curUrl); if(url===null) return; s.link = url.trim()? (/^(https?:)\/\//i.test(url)?url:'https://'+url.trim()) : null; saveState(); renderSchedule(); });
+      img.addEventListener('touchstart', (e)=>{ if(e.cancelable) e.preventDefault(); }, {passive:false});
 
       const body = document.createElement('div'); body.className='body';
       const t = document.createElement('div'); t.className='title'; t.textContent=s.title; body.appendChild(t);
@@ -559,26 +603,43 @@
       const urlRoom = new URL(location.href).searchParams.get('room'); if(urlRoom){ roomInput.value = urlRoom; startSync(urlRoom); }
     })();
   
-// === Responsive sidebar toggle ===
+// === Responsive sidebar toggle (enhanced) ===
 (function(){
   const menuBtn = document.getElementById('menuBtn');
   const sidebar = document.querySelector('.sidebar');
-  if(menuBtn && sidebar){
-    menuBtn.addEventListener('click', ()=>{
-      const willOpen = !sidebar.classList.contains('open');
-      sidebar.classList.toggle('open', willOpen);
-      menuBtn.setAttribute('aria-pressed', willOpen ? 'true' : 'false');
-    });
+  const backdrop = document.getElementById('backdrop');
+  if(!menuBtn || !sidebar) return;
+
+  function openSidebar(){
+    sidebar.classList.add('open');
+    menuBtn.setAttribute('aria-pressed','true');
+    if(backdrop){ backdrop.classList.add('show'); }
   }
+  function closeSidebar(){
+    sidebar.classList.remove('open');
+    menuBtn.setAttribute('aria-pressed','false');
+    if(backdrop){ backdrop.classList.remove('show'); }
+  }
+  function toggleSidebar(){
+    if(sidebar.classList.contains('open')) closeSidebar();
+    else openSidebar();
+  }
+
+  menuBtn.addEventListener('click', toggleSidebar);
+  if(backdrop){ backdrop.addEventListener('click', closeSidebar); }
+  window.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeSidebar(); });
+
   function syncSidebarToViewport(){
     if(window.matchMedia('(min-width: 901px)').matches){
-      // In desktop view, keep sidebar visible (no slide state needed)
-      sidebar && sidebar.classList.remove('open');
-      menuBtn && menuBtn.setAttribute('aria-pressed','false');
+      // In desktop view, keep sidebar visible and remove mobile overlay state
+      sidebar.classList.remove('open');
+      menuBtn.setAttribute('aria-pressed','false');
+      if(backdrop){ backdrop.classList.remove('show'); }
     }
   }
   window.addEventListener('resize', syncSidebarToViewport);
 })();
 </script>
+  <div id="backdrop" class="backdrop" aria-hidden="true"></div>
 </body>
 </html>
