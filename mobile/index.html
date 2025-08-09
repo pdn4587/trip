@@ -46,8 +46,9 @@
     .toolbar-inline{display:flex;gap:6px;margin-top:8px}
     .mini{padding:6px 8px;border-radius:8px;font-size:12px}
 
-    /* 갤러리 */
+    /* 갤러리 (구역 구분: 무채색 계열 다른 톤) */
     .gallery{margin:12px;background:#0c1118;border:1px solid #3a4558;border-radius:14px;padding:12px}
+    .gallery h3{margin:0 0 8px 0}
     .gallery .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
     @media (max-width:520px){ .gallery .grid{grid-template-columns:1fr;} }
     .gcard{position:relative;background:#12131a;border:1px solid #3f4a5f;border-radius:12px;overflow:hidden}
@@ -105,19 +106,19 @@
 
     <section class="gallery">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <strong>관광지 갤러리</strong>
+        <h3>관광지 갤러리</h3>
         <div style="display:flex;gap:8px;align-items:center">
           <button class="btn" id="addPlaceBtn">관광지 추가</button>
         </div>
       </div>
       <div id="galleryGrid" class="grid"></div>
     </section>
+
+    <!-- 하단: PC 버전으로 이동 -->
+    <div class="wrap" style="padding:12px 16px 24px;display:flex;justify-content:center">
+      <a href="https://pdn4587.github.io/trip/" class="btn ghost" style="text-align:center">PC 버전으로 보기</a>
+    </div>
   </main>
-
-  <div class="wrap" style="padding:12px 16px 24px;display:flex;justify-content:center">
-    <a href="https://pdn4587.github.io/trip/" class="btn ghost" style="text-align:center">PC 버전으로 보기</a>
-  </div>
-
 
   <script>
     // ====== 기본 데이터 ======
@@ -241,19 +242,18 @@
             <button class="btn" title="편집">편집</button>
             <button class="btn danger" title="삭제">삭제</button>
           </div>`;
-        // 모바일: 탭으로 바로 추가
         const addHandler = ()=>{
           const inst = { uid:uid(), refId:item.id, title:item.title, img:item.img, note:'', link:item.link||null };
           c.schedule.push(inst); saveState(); renderSchedule(); renderPlanSelect();
         };
+        // 버튼으로만 추가 (요청사항): 이미지 클릭으로는 추가하지 않음
         card.querySelector('.btn.add').addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); addHandler(); });
-        const let img = card.querySelector('img');
-        img.setAttribute('draggable','false');
-// 편집/삭제
+
+        // 편집/삭제
         card.querySelector('[title="편집"]').addEventListener('click', ()=> editPlace(item.id));
         card.querySelector('[title="삭제"]').addEventListener('click', ()=> removePlace(item.id));
 
-        // 우클릭 편집도 그대로 지원(선택)
+        // 우클릭 편집도 지원(선택)
         card.addEventListener('contextmenu', (e)=>{ e.preventDefault(); editPlace(item.id); });
 
         grid.appendChild(card);
@@ -341,26 +341,14 @@
       saveState(); renderSchedule();
     }
 
-    // ====== 저장/불러오기/내보내기 ======
+    // ====== 저장/불러오기/내보내기 제거 → 바인딩 최소화 ======
     let saveTimer=null; const throttleSave = ()=>{ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,800); };
     function bindButtons(){
       const addPlaceBtn = byId('addPlaceBtn'); if(addPlaceBtn) addPlaceBtn.addEventListener('click', addPlace);
       byId('newPlanBtn').addEventListener('click', createPlan);
       byId('renamePlanBtn').addEventListener('click', renamePlan);
       byId('deletePlanBtn').addEventListener('click', deletePlan);
-}
-);
-      byId('clearBtn').addEventListener('click', ()=>{ if(confirm('현재 일정의 모든 내용을 초기화할까요?')){ const c=cur(); c.intro=''; c.headerTitle=''; c.headerBadge=''; c.schedule=[]; c.gallery=[]; saveState(); applyState(); }});
-      byId('exportBtn').addEventListener('click', ()=>{ const c=cur(); const blob = new Blob([JSON.stringify(c,null,2)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=(c.name||'itinerary')+'.json'; a.click(); URL.revokeObjectURL(url); });
-      byId('importFile').addEventListener('change', (e)=>{ const file = e.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = ()=>{ try{ const data = JSON.parse(reader.result); const c=cur(); Object.assign(c, { headerTitle:data.headerTitle||c.headerTitle, headerBadge:data.headerBadge||c.headerBadge, intro:data.intro||'', schedule:data.schedule||[], gallery:data.gallery||[] }); applyState(); saveState(); }catch(err){ alert('JSON 형식이 올바르지 않습니다.'); } }; reader.readAsText(file); });
-      byId('addPlaceBtn').addEventListener('click', addPlace);
-
-      byId('newPlanBtn').addEventListener('click', createPlan);
-      byId('renamePlanBtn').addEventListener('click', renamePlan);
-      byId('deletePlanBtn').addEventListener('click', deletePlan);
     }
-
-    // ====== 흐름 화살표는 모바일에서 생략(간단 UI) ======
 
     // ====== 상태 적용 ======
     function applyState(){
@@ -390,13 +378,11 @@
     function pushStateDebounced(){ if(!fb.sync || !fb.room) return; clearTimeout(writeTimer); writeTimer = setTimeout(async()=>{ try{ const payload = { state: cur(), rev: Date.now(), from: fb.selfId }; await roomDoc(fb.room).set(payload, { merge: true }); }catch(e){ console.error(e); } }, 350); }
     async function startSync(roomId){ await initFirebase(); if(!fb.db){ alert('Firebase 설정이 필요합니다.'); return; } const c=cur(); c.roomId = roomId; fb.room = roomId; fb.sync = true; await roomDoc(roomId).set({ state: c, rev: Date.now(), from: fb.selfId }, { merge: true }); if(fb.unsub) fb.unsub(); fb.unsub = roomDoc(roomId).onSnapshot((snap)=>{ const data = snap.data(); if(!data) return; if(data.from === fb.selfId) return; if(data.rev && data.rev <= lastRemoteRev) return; lastRemoteRev = data.rev || Date.now(); const incoming = data.state; const target = cur(); if(target && target.id===incoming.id){ Object.assign(target, incoming); applyState(); saveState(); } }); const url = new URL(location.href); url.searchParams.set('room', roomId); history.replaceState({}, '', url); document.getElementById('syncToggle').textContent = '실시간 동기화: 켜짐'; saveApp(); }
     function stopSync(){ if(fb.unsub) fb.unsub(); fb.unsub=null; fb.sync=false; fb.room=null; const url = new URL(location.href); url.searchParams.delete('room'); history.replaceState({}, '', url); document.getElementById('syncToggle').textContent = '실시간 동기화: 꺼짐'; }
-    ;(function bindRealtimeUI(){ const roomInput = document.getElementById('roomId'); const syncBtn = document.getElementById('syncToggle'); if(!fb.sync){ if(!rid){ alert('공유 코드를 먼저 입력하세요. 예: sapporo-trip'); return; } await startSync(rid); } else { stopSync(); } });
-      shareBtn.addEventListener('click', ()=>{ const rid = roomInput.value.trim(); const url = new URL(location.href); if(rid) url.searchParams.set('room', rid); navigator.clipboard.writeText(url.toString()).then(()=>{ shareBtn.textContent='복사됨!'; setTimeout(()=>shareBtn.textContent='공유 링크 복사',1200); }); });
+
+    ;(function bindRealtimeUI(){ const roomInput = document.getElementById('roomId'); const syncBtn = document.getElementById('syncToggle');
+      syncBtn.addEventListener('click', async()=>{ const rid = roomInput.value.trim(); if(!fb.sync){ if(!rid){ alert('공유 코드를 먼저 입력하세요. 예: sapporo-trip'); return; } await startSync(rid); } else { stopSync(); } });
       const urlRoom = new URL(location.href).searchParams.get('room'); if(urlRoom){ roomInput.value = urlRoom; startSync(urlRoom); }
     })();
-
-    // ====== 저장 트리거(모바일에서도) ======
-    function saveState(){ saveApp(); pushStateDebounced(); }
 
     // ====== 시작 ======
     function init(){
